@@ -16,13 +16,18 @@ LIB_INSTALL_DIR ?= /usr/local/lib/silo
 VERSION ?=
 VERSION_LDFLAG = $(if $(VERSION),-X github.com/rchekalov/silo/internal/version.Version=$(VERSION))
 
+# --disable-sandbox prevents SwiftPM from trying to wrap manifest evaluation
+# and plugins in its own sandbox-exec, which fails when already running inside
+# Homebrew's install sandbox. Harmless in non-nested environments.
+SWIFT_BUILD_FLAGS = --disable-sandbox
+
 # Build Swift bridge (debug)
 bridge:
-	cd $(SWIFT_BRIDGE_DIR) && swift build
+	cd $(SWIFT_BRIDGE_DIR) && swift build $(SWIFT_BUILD_FLAGS)
 
 # Build Swift bridge (release)
 bridge-release:
-	cd $(SWIFT_BRIDGE_DIR) && swift build -c release
+	cd $(SWIFT_BRIDGE_DIR) && swift build -c release $(SWIFT_BUILD_FLAGS)
 
 # Debug build. Embeds an rpath to the debug dylib so the binary runs without
 # DYLD_LIBRARY_PATH after codesigning.
