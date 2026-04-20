@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, go]
+  pull_request:
+    branches: [main, go]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode (for Swift 6.2+)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          go version
+          swift --version
+          xcodebuild -version
+          uname -m
+          sw_vers
+
+      - name: Build Swift bridge (debug)
+        run: make bridge
+
+      - name: Run Go unit tests
+        run: make test
+
+      - name: Build + sign debug binary
+        run: make sign-debug
+
+      - name: Smoke test signed binary
+        run: ./bin/silo --version
+
+      - name: Upload signed debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: silo-debug-${{ github.sha }}
+          path: |
+            bin/silo
+            swift-bridge/.build/debug/libSiloBridge.dylib
+          retention-days: 14
+          if-no-files-found: warn
+
+  # test-vm is intentionally not run on CI yet.
+  # It requires Virtualization.framework access on the runner. Enabling this
+  # is tracked alongside Phase 3 of the release plan (prebuilt runtime bundle).

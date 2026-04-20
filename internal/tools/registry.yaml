@@ -1,0 +1,227 @@
+tools:
+  python:
+    description: Python runtime
+    image: docker.io/library/python:3.12-slim
+    versions:
+      - tag: "3.12-slim"
+        label: LTS
+        default: true
+      - tag: "3.11-slim"
+      - tag: "3.10-slim"
+      - tag: "3.9-slim"
+    shims:
+      - python
+      - python3
+      - pip
+      - pip3
+    cache:
+      - guest: /root/.cache/pip
+        host: ~/.silo/cache/python/pip
+    workdir: /workspace
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    lsp:
+      command: ["pyright-langserver", "--stdio"]
+      install: "pip install pyright"
+      cache:
+        - guest: /root/.cache/pyright
+          host: ~/.silo/lsp-cache/python/pyright
+
+  node:
+    description: Node.js runtime
+    image: docker.io/library/node:22-slim
+    versions:
+      - tag: "23-slim"
+        label: latest
+      - tag: "22-slim"
+        label: LTS
+        default: true
+      - tag: "20-slim"
+      - tag: "18-slim"
+    shims:
+      - node
+      - npm
+      - npx
+    cache:
+      - guest: /root/.npm
+        host: ~/.silo/cache/node/npm
+    workdir: /workspace
+    lsp:
+      command: ["typescript-language-server", "--stdio"]
+      install: "npm install -g typescript-language-server typescript"
+
+  rust:
+    description: Rust toolchain
+    image: docker.io/library/rust:1.83-slim
+    versions:
+      - tag: "1.83-slim"
+        default: true
+      - tag: "1.82-slim"
+      - tag: "1.81-slim"
+    shims:
+      - cargo
+      - rustc
+      - rustup
+    cache:
+      - guest: /usr/local/cargo/registry
+        host: ~/.silo/cache/rust/registry
+    workdir: /workspace
+    lsp:
+      command: ["rust-analyzer"]
+      install: "rustup component add rust-analyzer"
+
+  go:
+    description: Go runtime
+    image: docker.io/library/golang:1.23-alpine
+    versions:
+      - tag: "1.23-alpine"
+        default: true
+      - tag: "1.22-alpine"
+      - tag: "1.21-alpine"
+    shims:
+      - go
+    cache:
+      - guest: /root/go/pkg/mod
+        host: ~/.silo/cache/go/mod
+    workdir: /workspace
+    lsp:
+      command: ["gopls", "serve"]
+      install: "go install golang.org/x/tools/gopls@latest"
+      cache:
+        - guest: /root/.cache/gopls
+          host: ~/.silo/lsp-cache/go/gopls
+
+  deno:
+    description: Deno runtime
+    image: docker.io/denoland/deno:alpine
+    versions:
+      - tag: alpine
+        default: true
+      - tag: "2.1.4"
+      - tag: "2.0.6"
+    shims:
+      - deno
+    cache:
+      - guest: /root/.cache/deno
+        host: ~/.silo/cache/deno/cache
+    workdir: /workspace
+
+  playwright:
+    description: Playwright browser automation
+    image: docker.io/library/node:22-slim
+    shims:
+      - playwright
+    cache:
+      - guest: /root/.cache/ms-playwright
+        host: ~/.silo/cache/playwright/browsers
+        sizeHint: "~2 GB"
+    workdir: /workspace
+    cpus: 4
+    memoryMB: 4096
+    rootfsSizeMB: 4096
+    network:
+      hostAccess: true
+    requires:
+      - node
+
+  cypress:
+    description: Cypress testing framework
+    image: docker.io/cypress/included:14.0.0
+    shims:
+      - cypress
+    cache:
+      - guest: /root/.cache/Cypress
+        host: ~/.silo/cache/cypress/cache
+        sizeHint: "~1.5 GB"
+    workdir: /workspace
+    cpus: 4
+    memoryMB: 4096
+    rootfsSizeMB: 4096
+    network:
+      hostAccess: true
+    requires:
+      - node
+
+  psql:
+    description: PostgreSQL client tools
+    image: docker.io/library/postgres:16-alpine
+    versions:
+      - tag: "16-alpine"
+        default: true
+      - tag: "15-alpine"
+      - tag: "14-alpine"
+    shims:
+      - psql
+      - pg_dump
+      - pg_restore
+      - createdb
+      - dropdb
+    workdir: /workspace
+    memoryMB: 256
+    network:
+      hostAccess: true
+
+  jupyter:
+    description: Jupyter notebook server
+    image: docker.io/jupyter/scipy-notebook:latest
+    shims:
+      - jupyter
+    cache:
+      - guest: /home/jovyan/.local
+        host: ~/.silo/cache/jupyter/local
+        sizeHint: "~500 MB"
+    workdir: /workspace
+    cpus: 4
+    memoryMB: 8192
+    rootfsSizeMB: 4096
+    network:
+      hostAccess: true
+    requires:
+      - python
+    ports:
+      - host: 8888
+        guest: 8888
+
+  aws-cli:
+    description: AWS command line interface
+    image: docker.io/amazon/aws-cli:latest
+    shims:
+      - aws
+    cache:
+      - guest: /root/.aws
+        host: ~/.silo/cache/aws-cli/config
+    workdir: /workspace
+    network:
+      hostAccess: true
+
+  claude-code:
+    description: Claude Code AI coding assistant (isolated)
+    image: docker.io/silotools/claude-code:latest
+    shims:
+      - claude
+    cache:
+      - guest: /root/.claude
+        host: ~/.silo/cache/claude-code/config
+      - guest: /root/.npm
+        host: ~/.silo/cache/node/npm
+    workdir: /workspace
+    cpus: 4
+    memoryMB: 4096
+    rootfsSizeMB: 4096
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - api.anthropic.com
+          - statsig.anthropic.com
+          - sentry.io
+          - "*.github.com"
+          - "*.githubusercontent.com"
+          - registry.npmjs.org
+          - pypi.org
+          - files.pythonhosted.org
+          - crates.io
+          - "*.crates.io"
+          - proxy.golang.org
+        deny:
+          - "*"

@@ -1,0 +1,12 @@
+/bin/
+/.build/
+swift-bridge/.build/
+Package.resolved
+
+.siloconf
+.claude/
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.tmp

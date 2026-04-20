@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security-sensitive report
+    url: https://github.com/rchekalov/silo/security/advisories/new
+    about: For isolation, credential, or network allow-list issues, please use Security Advisories instead of a public issue.

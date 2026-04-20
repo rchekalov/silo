@@ -1,0 +1,67 @@
+name: Bug report
+description: Something isn't working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please include enough detail for us to reproduce it.
+
+        If this is a security-sensitive issue (isolation boundary, credential handling, network allow-list), please use [Security Advisories](https://github.com/rchekalov/silo/security/advisories/new) instead of a public issue.
+  - type: input
+    id: silo-version
+    attributes:
+      label: silo version
+      description: Output of `silo --version`
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: Output of `sw_vers -productVersion`
+      placeholder: "26.0"
+    validations:
+      required: true
+  - type: input
+    id: arch
+    attributes:
+      label: Architecture
+      description: Output of `uname -m`
+      placeholder: "arm64"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, what did you see?
+      placeholder: |
+        I ran `silo install python` and ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, in order, that reproduce the issue.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `silo doctor`
+      description: Helps diagnose runtime / bootstrap issues.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Paste any error output. Redact anything sensitive.
+      render: shell
+    validations:
+      required: false

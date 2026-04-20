@@ -1,0 +1,467 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+
+	"github.com/rchekalov/silo/internal/runtime"
+	"gopkg.in/yaml.v3"
+)
+
+// ProjectConfigFilename is the per-project config file name that's walked up
+// from the current working directory.
+const ProjectConfigFilename = ".siloconf"
+
+// MountConfig configures the /workspace mount.
+type MountConfig struct {
+	Mode    string   `yaml:"mode,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty"`
+}
+
+// ToolOverride captures per-project tweaks to a tool definition.
+type ToolOverride struct {
+	Image   string            `yaml:"image,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+	Network *NetworkConfig    `yaml:"network,omitempty"`
+	Ports   []PortMapping     `yaml:"ports,omitempty"`
+}
+
+// ProjectConfig is .siloconf at the project root (or ~/.silo/siloconf, globally).
+type ProjectConfig struct {
+	// Tools lists the tools this project depends on. Keys in Overrides also count;
+	// see ProjectTools. Declaring a tool here lets the user pin it without a
+	// customization block, which is the common case.
+	Tools     []string                `yaml:"tools,omitempty"`
+	PassEnv   []string                `yaml:"passEnv,omitempty"`
+	PassFiles []string                `yaml:"passFiles,omitempty"`
+	Mount     *MountConfig            `yaml:"mount,omitempty"`
+	Overrides map[string]ToolOverride `yaml:"overrides,omitempty"`
+	Cache     *CacheConfig            `yaml:"cache,omitempty"`
+}
+
+// ProjectTools returns the sorted, deduplicated set of tools required by this
+// project: the union of `tools:` and the keys of `overrides:`. Used by
+// `silo pull` and `silo clean` to find the project's tool set.
+func (c *ProjectConfig) ProjectTools() []string {
+	if c == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, t := range c.Tools {
+		seen[t] = struct{}{}
+	}
+	for name := range c.Overrides {
+		seen[name] = struct{}{}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// LoadProjectConfigFile parses a .siloconf file at path. Returns (nil, nil) if absent.
+func LoadProjectConfigFile(path string) (*ProjectConfig, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var c ProjectConfig
+	if err := yaml.Unmarshal(raw, &c); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return &c, nil
+}
+
+// LoadGlobalSiloconf reads ~/.silo/siloconf, if it exists.
+func LoadGlobalSiloconf() (*ProjectConfig, error) {
+	return LoadProjectConfigFile(runtime.GlobalSiloconf())
+}
+
+// FindProjectConfig walks up from `start` (default cwd) looking for .siloconf.
+// Returns (config, root) or (nil, ""). Errors propagate.
+func FindProjectConfig(start string) (*ProjectConfig, string, error) {
+	if start == "" {
+		var err error
+		start, err = os.Getwd()
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	current, err := filepath.Abs(start)
+	if err != nil {
+		return nil, "", err
+	}
+	for {
+		candidate := filepath.Join(current, ProjectConfigFilename)
+		cfg, err := LoadProjectConfigFile(candidate)
+		if err != nil {
+			return nil, "", err
+		}
+		if cfg != nil {
+			return cfg, current, nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return nil, "", nil
+		}
+		current = parent
+	}
+}
+
+// FindMergedProjectConfig walks up for .siloconf and merges it over
+// ~/.silo/siloconf (project wins). Returns (merged, root or "", err).
+// If neither exists, returns (nil, "", nil).
+func FindMergedProjectConfig(start string) (*ProjectConfig, string, error) {
+	global, err := LoadGlobalSiloconf()
+	if err != nil {
+		return nil, "", err
+	}
+	project, root, err := FindProjectConfig(start)
+	if err != nil {
+		return nil, "", err
+	}
+	switch {
+	case project != nil && global != nil:
+		merged := project.MergeOver(global)
+		return &merged, root, nil
+	case project != nil:
+		return project, root, nil
+	case global != nil:
+		return global, "", nil
+	default:
+		return nil, "", nil
+	}
+}
+
+// FindOrDefault returns an existing project config walked up from cwd, or an
+// empty one rooted at cwd.
+func FindOrDefault() (*ProjectConfig, string, error) {
+	cfg, root, err := FindProjectConfig("")
+	if err != nil {
+		return nil, "", err
+	}
+	if cfg != nil {
+		return cfg, root, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, "", err
+	}
+	return &ProjectConfig{}, cwd, nil
+}
+
+// Save writes the YAML to <directory>/.siloconf.
+func (c *ProjectConfig) Save(directory string) error {
+	out, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(directory, ProjectConfigFilename), out, 0o644)
+}
+
+// MergeOver returns a new config with `c` merged over `base`. `c` wins on
+// conflicts. PassEnv / PassFiles are deduplicated preserving order.
+func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
+	out := ProjectConfig{
+		Tools:     dedupMerge(base.Tools, c.Tools),
+		PassEnv:   dedupMerge(base.PassEnv, c.PassEnv),
+		PassFiles: dedupMerge(base.PassFiles, c.PassFiles),
+	}
+	if c.Mount != nil {
+		mc := *c.Mount
+		out.Mount = &mc
+	} else if base.Mount != nil {
+		mc := *base.Mount
+		out.Mount = &mc
+	}
+	if c.Cache != nil {
+		cc := *c.Cache
+		out.Cache = &cc
+	} else if base.Cache != nil {
+		cc := *base.Cache
+		out.Cache = &cc
+	}
+	// Clone base overrides, then merge c overrides on top.
+	merged := map[string]ToolOverride{}
+	for k, v := range base.Overrides {
+		merged[k] = v
+	}
+	for tool, override := range c.Overrides {
+		existing, ok := merged[tool]
+		if !ok {
+			merged[tool] = override
+			continue
+		}
+		if override.Image != "" {
+			existing.Image = override.Image
+		}
+		if len(override.Env) > 0 {
+			if existing.Env == nil {
+				existing.Env = map[string]string{}
+			}
+			for k, v := range override.Env {
+				existing.Env[k] = v
+			}
+		}
+		if override.Network != nil {
+			n := *override.Network
+			existing.Network = &n
+		}
+		if override.Ports != nil {
+			existing.Ports = append([]PortMapping(nil), override.Ports...)
+		}
+		merged[tool] = existing
+	}
+	if len(merged) > 0 {
+		out.Overrides = merged
+	}
+	return out
+}
+
+// ensureToolOverride returns the overrides entry for `tool`, creating it if missing.
+func (c *ProjectConfig) ensureToolOverride(tool string) *ToolOverride {
+	if c.Overrides == nil {
+		c.Overrides = map[string]ToolOverride{}
+	}
+	if _, ok := c.Overrides[tool]; !ok {
+		c.Overrides[tool] = ToolOverride{}
+	}
+	// To mutate in place we store back at the end. Return a pointer into a temp
+	// by re-reading from the map after edits; simpler: operate via getter+setter.
+	o := c.Overrides[tool]
+	return &o
+}
+
+func (c *ProjectConfig) setToolOverride(tool string, o ToolOverride) {
+	if c.Overrides == nil {
+		c.Overrides = map[string]ToolOverride{}
+	}
+	c.Overrides[tool] = o
+}
+
+// AddTool appends `name` to Tools if not already present. Idempotent.
+func (c *ProjectConfig) AddTool(name string) {
+	for _, t := range c.Tools {
+		if t == name {
+			return
+		}
+	}
+	c.Tools = append(c.Tools, name)
+}
+
+// RemoveTool strips `name` from Tools and Overrides. Returns true if anything
+// was removed. Used by `silo unuse`.
+func (c *ProjectConfig) RemoveTool(name string) bool {
+	removed := false
+	if len(c.Tools) > 0 {
+		filtered := c.Tools[:0]
+		for _, t := range c.Tools {
+			if t == name {
+				removed = true
+				continue
+			}
+			filtered = append(filtered, t)
+		}
+		c.Tools = append([]string(nil), filtered...)
+		if len(c.Tools) == 0 {
+			c.Tools = nil
+		}
+	}
+	if _, ok := c.Overrides[name]; ok {
+		delete(c.Overrides, name)
+		removed = true
+	}
+	c.cleanupEmpty()
+	return removed
+}
+
+// SetOverrideImage records an image override for `tool`. Creates the override
+// entry if missing; leaves other override fields untouched.
+func (c *ProjectConfig) SetOverrideImage(tool, image string) {
+	o := c.ensureToolOverride(tool)
+	o.Image = image
+	c.setToolOverride(tool, *o)
+}
+
+// AddPort adds a host:guest forwarding rule for `tool`. No-op if already present.
+func (c *ProjectConfig) AddPort(tool string, host, guest uint16) {
+	o := c.ensureToolOverride(tool)
+	for _, p := range o.Ports {
+		if p.Host == host && p.Guest == guest {
+			return
+		}
+	}
+	o.Ports = append(o.Ports, PortMapping{Host: host, Guest: guest})
+	c.setToolOverride(tool, *o)
+}
+
+// RemovePort drops a host:guest rule. Returns true if something was removed.
+func (c *ProjectConfig) RemovePort(tool string, host, guest uint16) bool {
+	o, ok := c.Overrides[tool]
+	if !ok {
+		return false
+	}
+	filtered := o.Ports[:0]
+	removed := false
+	for _, p := range o.Ports {
+		if p.Host == host && p.Guest == guest {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	if !removed {
+		return false
+	}
+	o.Ports = filtered
+	c.Overrides[tool] = o
+	c.cleanupEmpty()
+	return true
+}
+
+// AddNetworkAllow adds a domain to the proxy allowlist for `tool`.
+func (c *ProjectConfig) AddNetworkAllow(tool, domain string) {
+	o := c.ensureToolOverride(tool)
+	if o.Network == nil {
+		o.Network = &NetworkConfig{HostAccess: true}
+	}
+	if o.Network.Proxy == nil {
+		o.Network.Proxy = &ProxyConfig{}
+	}
+	for _, d := range o.Network.Proxy.Allow {
+		if d == domain {
+			c.setToolOverride(tool, *o)
+			return
+		}
+	}
+	o.Network.Proxy.Allow = append(o.Network.Proxy.Allow, domain)
+	c.setToolOverride(tool, *o)
+}
+
+// AddNetworkDeny adds a domain to the proxy denylist for `tool`.
+func (c *ProjectConfig) AddNetworkDeny(tool, domain string) {
+	o := c.ensureToolOverride(tool)
+	if o.Network == nil {
+		o.Network = &NetworkConfig{HostAccess: true}
+	}
+	if o.Network.Proxy == nil {
+		o.Network.Proxy = &ProxyConfig{}
+	}
+	for _, d := range o.Network.Proxy.Deny {
+		if d == domain {
+			c.setToolOverride(tool, *o)
+			return
+		}
+	}
+	o.Network.Proxy.Deny = append(o.Network.Proxy.Deny, domain)
+	c.setToolOverride(tool, *o)
+}
+
+// RemoveNetworkDomain drops `domain` from both allow and deny. Returns true if removed.
+func (c *ProjectConfig) RemoveNetworkDomain(tool, domain string) bool {
+	o, ok := c.Overrides[tool]
+	if !ok || o.Network == nil || o.Network.Proxy == nil {
+		return false
+	}
+	removed := false
+	if filtered, ok := filterOut(o.Network.Proxy.Allow, domain); ok {
+		o.Network.Proxy.Allow = filtered
+		removed = true
+	}
+	if filtered, ok := filterOut(o.Network.Proxy.Deny, domain); ok {
+		o.Network.Proxy.Deny = filtered
+		removed = true
+	}
+	if removed {
+		c.Overrides[tool] = o
+		c.cleanupEmpty()
+	}
+	return removed
+}
+
+// cleanupEmpty removes empty nested structures so saved YAML is tidy.
+func (c *ProjectConfig) cleanupEmpty() {
+	if c.Overrides == nil {
+		return
+	}
+	for tool, o := range c.Overrides {
+		if len(o.Ports) == 0 {
+			o.Ports = nil
+		}
+		if o.Network != nil {
+			if o.Network.Proxy != nil {
+				if len(o.Network.Proxy.Deny) == 0 {
+					o.Network.Proxy.Deny = nil
+				}
+				if len(o.Network.Proxy.Allow) == 0 && o.Network.Proxy.Deny == nil {
+					o.Network.Proxy = nil
+				}
+			}
+			if !o.Network.HostAccess && o.Network.Proxy == nil {
+				o.Network = nil
+			}
+		}
+		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 {
+			delete(c.Overrides, tool)
+			continue
+		}
+		c.Overrides[tool] = o
+	}
+	if len(c.Overrides) == 0 {
+		c.Overrides = nil
+	}
+}
+
+// filterOut returns (filtered, true) if `v` was present in `s`, else (s, false).
+func filterOut(s []string, v string) ([]string, bool) {
+	out := s[:0]
+	removed := false
+	for _, x := range s {
+		if x == v {
+			removed = true
+			continue
+		}
+		out = append(out, x)
+	}
+	if !removed {
+		return s, false
+	}
+	// Reallocate a fresh slice so the backing array isn't shared.
+	return append([]string(nil), out...), true
+}
+
+// dedupMerge returns base || overlay, order-preserving. nil on empty.
+func dedupMerge(base, overlay []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(base)+len(overlay))
+	for _, s := range base {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	for _, s := range overlay {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}

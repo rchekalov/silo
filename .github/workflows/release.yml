@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Needed so the GITHUB_TOKEN used by softprops/action-gh-release can
+# create a release on this repo.
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify build
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Select latest Xcode (for Swift 6.2+)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Build + test
+        run: |
+          make bridge
+          make test
+
+      - name: Build release bundle with baked version
+        run: |
+          STAGE="${RUNNER_TEMP}/silo-install"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          make release-bundle PREFIX="$STAGE" VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Confirm --version matches tag
+        run: |
+          VERSION_OUT=$("$STAGE/bin/silo" --version)
+          echo "silo reports: $VERSION_OUT"
+          echo "$VERSION_OUT" | grep -q "${{ steps.meta.outputs.version }}" \
+            || (echo "version mismatch"; exit 1)
+
+  publish-release:
+    name: Create GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      sha256: ${{ steps.sha.outputs.sha256 }}
+
+    steps:
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Compute sha256 of source tarball
+        id: sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          # Authenticated request — works for public and private repos.
+          # GitHub may generate the source tarball lazily, so retry.
+          for i in 1 2 3 4 5; do
+            if curl -fsSL \
+                 -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/vnd.github+json" \
+                 -o src.tar.gz "$URL"; then
+              break
+            fi
+            echo "tarball not ready yet (attempt $i), retrying..."
+            sleep 10
+          done
+          if [ ! -s src.tar.gz ]; then
+            echo "error: could not fetch source tarball after 5 attempts"
+            exit 1
+          fi
+          SHA=$(shasum -a 256 src.tar.gz | awk '{print $1}')
+          if [ -z "$SHA" ]; then
+            echo "error: empty sha256 — refusing to proceed"
+            exit 1
+          fi
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "source tarball sha256: $SHA"
+
+  update-formula:
+    name: Bump Homebrew formula
+    needs: [verify, publish-release]
+    runs-on: ubuntu-latest
+    # Skip if the release is a pre-release tag (e.g. v0.4.0-rc1).
+    if: ${{ !contains(github.ref_name, '-') }}
+
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: rchekalov/homebrew-silo
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        working-directory: tap
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          SHA256: ${{ needs.publish-release.outputs.sha256 }}
+          REPO: ${{ github.repository }}
+        run: |
+          FORMULA=Formula/silo.rb
+          if [ ! -f "$FORMULA" ]; then
+            echo "formula not found at $FORMULA"
+            exit 1
+          fi
+
+          NEW_URL="https://github.com/${REPO}/archive/refs/tags/v${VERSION}.tar.gz"
+
+          sed -i "s|^  version \".*\"|  version \"${VERSION}\"|" "$FORMULA"
+          sed -i "s|^  url \".*\"|  url \"${NEW_URL}\"|"       "$FORMULA"
+          sed -i "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|"   "$FORMULA"
+
+      - name: Commit + push
+        working-directory: tap
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "formula already at this version, nothing to commit"
+            exit 0
+          fi
+          git add Formula/silo.rb
+          git commit -m "silo ${{ needs.verify.outputs.version }}"
+          git push

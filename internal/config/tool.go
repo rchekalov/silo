@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package config
+
+import (
+	"fmt"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Defaults match the Rust port exactly.
+const (
+	DefaultWorkdir      = "/workspace"
+	DefaultCPUs         = 2
+	DefaultMemoryMB     = 512
+	DefaultRootfsSizeMB = 2048
+)
+
+// ProxyConfig is a domain allow/deny list for the network proxy. `allow`
+// supports leading wildcards ("*.github.com").
+type ProxyConfig struct {
+	Allow []string `yaml:"allow"`
+	Deny  []string `yaml:"deny,omitempty"`
+}
+
+// NetworkConfig gates host access for a tool. Camel-case in YAML.
+type NetworkConfig struct {
+	HostAccess bool         `yaml:"hostAccess"`
+	Proxy      *ProxyConfig `yaml:"proxy,omitempty"`
+}
+
+// PortMapping forwards a host TCP port to a guest VM port.
+type PortMapping struct {
+	Host  uint16 `yaml:"host"`
+	Guest uint16 `yaml:"guest"`
+}
+
+// ShimMapping pairs a host shim filename with the command run inside the container.
+// Serialized as a plain string: "python" (1:1) or "npm2:npm" (remap).
+type ShimMapping struct {
+	HostCommand      string
+	ContainerCommand string
+}
+
+// ParseShim builds a ShimMapping from a "host[:container]" spec.
+func ParseShim(spec string) ShimMapping {
+	if host, container, ok := strings.Cut(spec, ":"); ok {
+		return ShimMapping{HostCommand: host, ContainerCommand: container}
+	}
+	return ShimMapping{HostCommand: spec, ContainerCommand: spec}
+}
+
+// String implements fmt.Stringer.
+func (s ShimMapping) String() string {
+	if s.HostCommand == s.ContainerCommand {
+		return s.HostCommand
+	}
+	return s.HostCommand + ":" + s.ContainerCommand
+}
+
+// MarshalYAML emits the shim as a scalar string.
+func (s ShimMapping) MarshalYAML() (any, error) { return s.String(), nil }
+
+// UnmarshalYAML parses a scalar string into a ShimMapping.
+func (s *ShimMapping) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode {
+		return fmt.Errorf("shim mapping must be a string, got kind %d", node.Kind)
+	}
+	*s = ParseShim(node.Value)
+	return nil
+}
+
+// CacheMount is a persistent host<->guest path binding. Sized hints are purely
+// informational (shown in `silo list`).
+type CacheMount struct {
+	Guest    string `yaml:"guest"`
+	Host     string `yaml:"host"`
+	SizeHint string `yaml:"sizeHint,omitempty"`
+}
+
+// LspConfig describes an optional language-server installation/run recipe.
+type LspConfig struct {
+	Command []string          `yaml:"command"`
+	Install string            `yaml:"install,omitempty"`
+	Cache   []CacheMount      `yaml:"cache,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+}
+
+// ToolDefinition captures everything we need to create a VM and run a tool.
+type ToolDefinition struct {
+	Image        string            `yaml:"image"`
+	Shims        []ShimMapping     `yaml:"shims,omitempty"`
+	Cache        []CacheMount      `yaml:"cache,omitempty"`
+	Workdir      string            `yaml:"workdir,omitempty"`
+	Env          map[string]string `yaml:"env,omitempty"`
+	CPUs         int32             `yaml:"cpus,omitempty"`
+	MemoryMB     uint64            `yaml:"memoryMB,omitempty"`
+	RootfsSizeMB uint64            `yaml:"rootfsSizeMB,omitempty"`
+	Network      *NetworkConfig    `yaml:"network,omitempty"`
+	Requires     []string          `yaml:"requires,omitempty"`
+	Ports        []PortMapping     `yaml:"ports,omitempty"`
+	BuildRootfs  string            `yaml:"buildRootfs,omitempty"`
+	BuildScript  string            `yaml:"buildScript,omitempty"`
+	// BuildScope records how BuildRootfs/BuildScript were produced so that
+	// `silo rebuild` picks the right target without guessing from the
+	// filesystem. Values: "global" (shared ~/.silo/builds/<tool>), "project"
+	// (pinned to BuildProjectRoot), or "" (legacy entries predating this field).
+	BuildScope       string `yaml:"buildScope,omitempty"`
+	BuildProjectRoot string `yaml:"buildProjectRoot,omitempty"`
+	LSP              *LspConfig `yaml:"lsp,omitempty"`
+}
+
+// ApplyDefaults fills any zero-valued fields with the defaults.
+func (t *ToolDefinition) ApplyDefaults() {
+	if t.Workdir == "" {
+		t.Workdir = DefaultWorkdir
+	}
+	if t.CPUs == 0 {
+		t.CPUs = DefaultCPUs
+	}
+	if t.MemoryMB == 0 {
+		t.MemoryMB = DefaultMemoryMB
+	}
+	if t.RootfsSizeMB == 0 {
+		t.RootfsSizeMB = DefaultRootfsSizeMB
+	}
+	if t.Env == nil {
+		t.Env = map[string]string{}
+	}
+}
+
+// NewToolDefinition returns a ToolDefinition with defaults applied.
+func NewToolDefinition() ToolDefinition {
+	t := ToolDefinition{}
+	t.ApplyDefaults()
+	return t
+}
+
+// ApplyOverride returns a copy of def with any non-zero fields from o applied.
+// Mirrors the semantics used at run-time (see engine.resolveOverrides) so
+// `silo pull` prepares the exact image/network/ports that `silo run` will use.
+// Env maps are merged (override wins per key); Ports replace wholesale if set.
+func ApplyOverride(def ToolDefinition, o ToolOverride) ToolDefinition {
+	out := def
+	if o.Image != "" {
+		out.Image = o.Image
+	}
+	if len(o.Env) > 0 {
+		merged := make(map[string]string, len(def.Env)+len(o.Env))
+		for k, v := range def.Env {
+			merged[k] = v
+		}
+		for k, v := range o.Env {
+			merged[k] = v
+		}
+		out.Env = merged
+	}
+	if o.Network != nil {
+		n := *o.Network
+		if o.Network.Proxy != nil {
+			p := *o.Network.Proxy
+			p.Allow = append([]string(nil), o.Network.Proxy.Allow...)
+			p.Deny = append([]string(nil), o.Network.Proxy.Deny...)
+			n.Proxy = &p
+		}
+		out.Network = &n
+	}
+	if o.Ports != nil {
+		out.Ports = append([]PortMapping(nil), o.Ports...)
+	}
+	return out
+}
