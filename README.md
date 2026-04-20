@@ -35,9 +35,23 @@ Silo fixes both by running tools in a micro-VM that only sees the project direct
 - macOS 26 (Tahoe) or later
 - Apple Container CLI: `brew install container`
 
-## Install (from source)
+## Install
 
-Silo is pre-alpha and not yet on Homebrew. For now, build from source:
+```bash
+brew install rchekalov/silo/silo
+
+# Add silo shims to your PATH (run once for current shell + append to profile)
+eval "$(silo shellenv)"
+echo 'eval "$(silo shellenv)"' >> ~/.zshrc
+```
+
+The three-part `rchekalov/silo/silo` is required because homebrew-cask already has an unrelated `silo` cask — the fully-qualified form picks our formula.
+
+Homebrew compiles silo from source on your machine (~1–2 min) and ad-hoc codesigns the binary with the virtualization entitlement it needs to boot VMs. No notarization, no Gatekeeper quarantine prompts.
+
+## Install from source
+
+Skip Homebrew and build manually:
 
 ```bash
 git clone https://github.com/rchekalov/silo.git
@@ -47,8 +61,8 @@ cd silo
 make install
 
 # Add silo shims to your PATH
-echo 'export PATH="$HOME/.silo/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+eval "$(silo shellenv)"
+echo 'eval "$(silo shellenv)"' >> ~/.zshrc
 ```
 
 ### Build prerequisites

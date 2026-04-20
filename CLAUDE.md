@@ -75,6 +75,10 @@ silo doctor                           # runtime readiness: kernel, initfs
 silo current                          # installed tools + active project overrides
 silo current python                   # effective tool definition (merged with .siloconf overrides)
 
+# Shell integration
+silo shellenv                         # print the shell init for ~/.silo/bin; `eval "$(silo shellenv)"`
+silo shellenv fish                    # force fish syntax (default: detect from $SHELL)
+
 # Global cleanup
 silo prune                            # one-shot: rootfs GC + per-tool caches + orphan OCI blobs
 silo cache report                     # summarise ~/.silo disk usage by bucket

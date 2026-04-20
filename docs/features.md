@@ -209,6 +209,10 @@ Run language servers inside sandboxed containers, with transparent stdio proxyin
 | rust | rust-analyzer | rustup component add rust-analyzer |
 | go | gopls serve | go install golang.org/x/tools/gopls@latest |
 
+## Shell Integration
+
+- `silo shellenv [bash|zsh|fish]` — print the PATH export for `~/.silo/bin`. Intended use: `eval "$(silo shellenv)"` in a shell profile so silo's shims (python, node, npm, ...) are found automatically after install. Without an argument, the shell is detected from `$SHELL`. Fish gets `set -gx PATH ...`; everything else gets POSIX `export PATH=...`.
+
 ## Other
 
 - `silo reset` — remove `~/.silo/` (full reset)

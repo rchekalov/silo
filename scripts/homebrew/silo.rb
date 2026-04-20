@@ -9,9 +9,9 @@
 #   4. Tag v0.4.0 (or later) on this repo.
 #      The release workflow will auto-bump version/url/sha256 in Formula/silo.rb.
 #
-# Users install with:
-#   brew tap rchekalov/silo
-#   brew install silo
+# Users install with (the three-part form avoids a name collision with
+# the homebrew-cask `silo` cask, which is an unrelated macOS app):
+#   brew install rchekalov/silo/silo
 
 class Silo < Formula
   desc "Run dev tools in isolated Apple Container VMs"
@@ -35,15 +35,15 @@ class Silo < Formula
 
   def caveats
     <<~EOS
-      Add silo shims to your PATH:
-        export PATH="$HOME/.silo/bin:$PATH"
+      Add silo shims to your PATH (so `python`, `npm`, etc. route through silo):
+        eval "$(silo shellenv)"                              # current shell
+        echo 'eval "$(silo shellenv)"' >> ~/.zshrc           # permanent (zsh)
+        echo 'eval "$(silo shellenv)"' >> ~/.bashrc          # permanent (bash)
 
-      Silo requires the Apple Container CLI. Install it with:
+      Silo requires the Apple Container CLI:
         brew install container
 
       First `silo install` triggers a one-time runtime bootstrap (~5 minutes).
-      A prebuilt runtime bundle that cuts this to ~30s is tracked in the
-      project roadmap.
     EOS
   end
 
