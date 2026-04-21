@@ -1,7 +1,6 @@
 /bin/
 /.build/
 swift-bridge/.build/
-Package.resolved
 
 .siloconf
 .claude/

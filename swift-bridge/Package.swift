@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "SiloBridge", type: .dynamic, targets: ["SiloBridge"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/containerization.git", from: "0.1.0"),
+        .package(url: "https://github.com/apple/containerization.git", from: "0.30.1"),
     ],
     targets: [
         .target(
