@@ -15,6 +15,7 @@ import (
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
+	"github.com/rchekalov/silo/internal/engine/pullprogress"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/network"
 	"github.com/rchekalov/silo/internal/runtime"
@@ -58,6 +59,17 @@ func (r *ephemeralRunner) PullImage(reference string, cacheFor *config.ToolDefin
 	}
 	cfg := bridge.DefaultContainerConfig()
 	cfg.Arguments = []string{"/bin/true"}
+
+	// Apple Containerization doesn't feed progress through our bridge, so
+	// the best we can do from the Go side is tail the two directories bytes
+	// land in. Good enough to prove the pull is alive and growing.
+	watcher := pullprogress.Start(pullprogress.Options{
+		Reference:    reference,
+		ImagesDir:    runtime.ImageStore(),
+		ContainerDir: filepath.Join(r.rootPath, "containers", id),
+		Out:          os.Stderr,
+	})
+	defer watcher.Stop()
 
 	ctr, err := mgr.CreateContainerFromRef(id, reference, rootfsSize, cfg)
 	if err != nil {
