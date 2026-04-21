@@ -184,6 +184,12 @@ func ensureInitfs() error {
 			if err := copyBytes(src, pair[1]); err != nil {
 				return err
 			}
+			// Preserve exec bit across copyBytes so cctl packages the binaries
+			// into initfs with the right mode — otherwise the guest init fails
+			// with EACCES at boot.
+			if err := os.Chmod(pair[1], 0o755); err != nil {
+				return err
+			}
 		}
 		fmt.Fprintln(os.Stderr, "vminitd built successfully.")
 	}
@@ -212,6 +218,11 @@ func ensureInitfs() error {
 		built := filepath.Join(buildBinDir, "cctl")
 		_ = os.Remove(cctlBin)
 		if err := copyBytes(built, cctlBin); err != nil {
+			return err
+		}
+		// copyBytes uses os.Create, which drops the source's exec bit — restore
+		// it so we can actually run cctl below. Hit on hosted CI runners.
+		if err := os.Chmod(cctlBin, 0o755); err != nil {
 			return err
 		}
 		entitlements := filepath.Join(containerizationDir, "signing", "vz.entitlements")
