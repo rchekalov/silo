@@ -53,7 +53,7 @@ func TestLookupPython(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("err=%v ok=%v", err, ok)
 	}
-	if def.Image != "docker.io/library/python:3.12-slim" {
+	if def.Image != "docker.io/library/python:3.14-slim" {
 		t.Fatalf("image %q", def.Image)
 	}
 	hasPip := false
@@ -77,12 +77,32 @@ func TestLookupWithVersion(t *testing.T) {
 	}
 }
 
+func TestLookupUnknownVersionRejected(t *testing.T) {
+	// Previously this accepted any string and silently swapped the tag,
+	// so `python@3.13` landed on `python:3.13` (not -slim) — ~900 MB
+	// vs ~50 MB slim. Now we reject unknown versions up front and tell
+	// the user what's available.
+	_, _, err := Lookup("python", "3.13")
+	if err == nil {
+		t.Fatal("expected error for unknown python version, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown version") {
+		t.Fatalf("error should mention unknown version, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "3.14-slim") {
+		t.Fatalf("error should list available versions including 3.14-slim, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--image") {
+		t.Fatalf("error should point at --image escape hatch, got %v", err)
+	}
+}
+
 func TestDefaultVersion(t *testing.T) {
 	v, err := DefaultVersion("python")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != "3.12-slim" {
+	if v != "3.14-slim" {
 		t.Fatalf("version %q", v)
 	}
 }

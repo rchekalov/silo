@@ -119,6 +119,11 @@ func ParseSpec(spec string) (name, version string, err error) {
 }
 
 // Lookup returns the tool definition for `name`, with optional `version`.
+// When `version` is set and the registry entry declares a non-empty Versions
+// list, the version must match one of the declared tags exactly. Previously
+// any string was accepted and silently rewrote the image reference — users
+// asking for `python@3.13` would land on `python:3.13` (the full ~900 MB
+// debian variant) instead of the intended slim base.
 func Lookup(name, version string) (config.ToolDefinition, bool, error) {
 	entries, err := Entries()
 	if err != nil {
@@ -127,6 +132,23 @@ func Lookup(name, version string) (config.ToolDefinition, bool, error) {
 	e, ok := entries[name]
 	if !ok {
 		return config.ToolDefinition{}, false, nil
+	}
+	if version != "" && len(e.Versions) > 0 {
+		known := false
+		tags := make([]string, 0, len(e.Versions))
+		for _, v := range e.Versions {
+			tags = append(tags, v.Tag)
+			if v.Tag == version {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return config.ToolDefinition{}, false, fmt.Errorf(
+				"unknown version %q for %q — available: %s (or pass --image docker.io/library/%s:%s to force a custom tag)",
+				version, name, strings.Join(tags, ", "), name, version,
+			)
+		}
 	}
 	return e.ToToolDefinition(version), true, nil
 }
