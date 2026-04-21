@@ -511,6 +511,18 @@ func copyFile(src, dst string) error {
 	return out.Sync()
 }
 
+// CloneOrCopyFile replicates src to dst using APFS clonefile when possible
+// (instant copy-on-write) and falls back to a byte-level copy otherwise.
+// Callers outside the cache package that materialize a cached rootfs for a
+// container should use this instead of hand-rolling the fallback.
+func CloneOrCopyFile(src, dst string) error {
+	_ = os.Remove(dst)
+	if err := unix.Clonefile(src, dst, 0); err == nil {
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
 // readTime reads an RFC3339Nano timestamp from path.
 func readTime(path string) (time.Time, error) {
 	raw, err := os.ReadFile(path)

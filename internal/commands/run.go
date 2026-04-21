@@ -10,7 +10,6 @@ import (
 
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/engine"
-	"github.com/rchekalov/silo/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +41,6 @@ func passthroughArgs() []string {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	tool := args[0]
 	passthrough := passthroughArgs()
 	total := time.Now()
 
@@ -50,14 +48,17 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	def, ok := cfg.Tools[tool]
-	if !ok {
-		return errs.ToolNotInstalledError(tool)
+	tool, def, resolvedShim, err := resolveToolOrShim(cfg, args[0])
+	if err != nil {
+		return err
 	}
 
 	command := tool
-	if runShim != "" {
+	switch {
+	case runShim != "":
 		command = runShim
+	case resolvedShim != "":
+		command = resolvedShim
 	}
 
 	ws, err := config.ResolveWorkspace("")

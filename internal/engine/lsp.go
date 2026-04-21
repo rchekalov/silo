@@ -213,17 +213,21 @@ func (r *ephemeralRunner) acquireContainerForLSP(
 ) (*bridge.Container, error) {
 	if opts.ProjectRoot != "" {
 		p := runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)
-		if _, err := os.Stat(p); err == nil {
-			if ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg); err == nil {
+		if _, statErr := os.Stat(p); statErr == nil {
+			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg)
+			if err == nil {
 				return ctr, nil
 			}
+			fmt.Fprintf(os.Stderr, "warning: project rootfs %s failed to load: %v; falling back\n", p, err)
 		}
 	}
 	if opts.Tool.BuildRootfs != "" {
-		if _, err := os.Stat(opts.Tool.BuildRootfs); err == nil {
-			if ctr, err := r.tryCachedRootfs(mgr, id, imageRef, opts.Tool.BuildRootfs, cfg); err == nil {
+		if _, statErr := os.Stat(opts.Tool.BuildRootfs); statErr == nil {
+			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, opts.Tool.BuildRootfs, cfg)
+			if err == nil {
 				return ctr, nil
 			}
+			fmt.Fprintf(os.Stderr, "warning: buildRootfs %s failed to load: %v; falling back\n", opts.Tool.BuildRootfs, err)
 		}
 	}
 	if ctr := r.tryRootfsCacheHit(mgr, id, imageRef, rootfsSize, cfg); ctr != nil {

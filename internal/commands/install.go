@@ -74,6 +74,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		EnsureRuntime: e.EnsureRuntime,
 		PullImage:     e.PullImage,
 		RunCaptured:   captureRunAdapter(e),
+		RunSetup: func(name string, tool config.ToolDefinition, cmd string, arguments []string, target string) (int32, error) {
+			return e.RunSetup(engine.RunSetupOptions{
+				ToolName:     name,
+				Tool:         tool,
+				Command:      cmd,
+				Arguments:    arguments,
+				TargetRootfs: target,
+				Global:       true,
+			})
+		},
 	}
 
 	_, wasInstalled := cfg.Tools[toolName]

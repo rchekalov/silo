@@ -7,7 +7,6 @@ import (
 
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/engine"
-	"github.com/rchekalov/silo/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -16,14 +15,13 @@ var shellCmd = &cobra.Command{
 	Short: "Interactive shell in an ephemeral container",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tool := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
 			return err
 		}
-		def, ok := cfg.Tools[tool]
-		if !ok {
-			return errs.ToolNotInstalledError(tool)
+		tool, def, _, err := resolveToolOrShim(cfg, args[0])
+		if err != nil {
+			return err
 		}
 		ws, err := config.ResolveWorkspace("")
 		if err != nil {

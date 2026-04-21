@@ -43,6 +43,7 @@ type RegistryEntry struct {
 	Requires     []string              `yaml:"requires,omitempty"`
 	Ports        []config.PortMapping  `yaml:"ports,omitempty"`
 	LSP          *config.LspConfig     `yaml:"lsp,omitempty"`
+	PostInstall  []string              `yaml:"postInstall,omitempty"`
 }
 
 // ToToolDefinition returns a filled-in ToolDefinition, optionally overriding
@@ -56,15 +57,16 @@ func (e RegistryEntry) ToToolDefinition(version string) config.ToolDefinition {
 		image += ":" + version
 	}
 	def := config.ToolDefinition{
-		Image:    image,
-		Shims:    append([]config.ShimMapping(nil), e.Shims...),
-		Cache:    append([]config.CacheMount(nil), e.Cache...),
-		Workdir:  e.Workdir,
-		Env:      cloneStringMap(e.Env),
-		Network:  cloneNetwork(e.Network),
-		Requires: append([]string(nil), e.Requires...),
-		Ports:    append([]config.PortMapping(nil), e.Ports...),
-		LSP:      cloneLsp(e.LSP),
+		Image:       image,
+		Shims:       append([]config.ShimMapping(nil), e.Shims...),
+		Cache:       append([]config.CacheMount(nil), e.Cache...),
+		Workdir:     e.Workdir,
+		Env:         cloneStringMap(e.Env),
+		Network:     cloneNetwork(e.Network),
+		Requires:    append([]string(nil), e.Requires...),
+		Ports:       append([]config.PortMapping(nil), e.Ports...),
+		LSP:         cloneLsp(e.LSP),
+		PostInstall: append([]string(nil), e.PostInstall...),
 	}
 	if e.CPUs != nil {
 		def.CPUs = *e.CPUs

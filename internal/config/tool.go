@@ -102,6 +102,13 @@ type ToolDefinition struct {
 	Ports        []PortMapping     `yaml:"ports,omitempty"`
 	BuildRootfs  string            `yaml:"buildRootfs,omitempty"`
 	BuildScript  string            `yaml:"buildScript,omitempty"`
+	// PostInstall is a list of shell commands baked into a persistent rootfs
+	// right after the image is pulled. The final rootfs becomes BuildRootfs
+	// (global scope) so subsequent `silo run` invocations reuse it without
+	// refetching anything from the registry. The build step uses HostAccess
+	// networking without the proxy allowlist, so apt-get / npm install / etc.
+	// work regardless of the runtime's tighter allowlist.
+	PostInstall  []string          `yaml:"postInstall,omitempty"`
 	// BuildScope records how BuildRootfs/BuildScript were produced so that
 	// `silo rebuild` picks the right target without guessing from the
 	// filesystem. Values: "global" (shared ~/.silo/builds/<tool>), "project"

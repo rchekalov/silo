@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/rchekalov/silo/internal/runtime"
 	"gopkg.in/yaml.v3"
@@ -101,4 +102,20 @@ func (c *GlobalConfig) ResolveShim(shim string) (string, *ToolDefinition) {
 		}
 	}
 	return "", nil
+}
+
+// ResolveShimAll returns every tool name whose shims include `shim`, sorted.
+// Used by callers that need to detect ambiguity (multiple owners).
+func (c *GlobalConfig) ResolveShimAll(shim string) []string {
+	var names []string
+	for name, tool := range c.Tools {
+		for _, s := range tool.Shims {
+			if s.HostCommand == shim {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }

@@ -69,9 +69,23 @@ func (r *ephemeralRunner) PullImage(reference string, cacheFor *config.ToolDefin
 	containerDir := filepath.Join(r.rootPath, "containers", id)
 	baseline := duBytes(contentDir)
 
+	// Probe the local content store. If the image is already there, the
+	// pull is a no-op and the visible work is unpacking from cached blobs
+	// into the new container's rootfs — so "0 B downloaded" would be true
+	// but misleading. Render a single-clause label instead.
+	cached := false
+	if img, err := mgr.ImageGet(reference, false); err == nil {
+		cached = true
+		img.Close()
+	}
+	verb := "Pulling"
+	if cached {
+		verb = "Unpacking"
+	}
+
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionSetDescription("Pulling "+reference),
+		progressbar.OptionSetDescription(verb+" "+reference),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionThrottle(100*time.Millisecond),
 		progressbar.OptionClearOnFinish(),
@@ -92,10 +106,24 @@ func (r *ephemeralRunner) PullImage(reference string, cacheFor *config.ToolDefin
 						imgDelta = 0
 					}
 					ctrNow := duBytes(containerDir)
-					bar.Describe(fmt.Sprintf(
-						"Pulling %s — %s downloaded, %s unpacked",
-						reference, humanBytes(imgDelta), humanBytes(ctrNow),
-					))
+					// Tag-drift safety net: if we started on "cached" but
+					// new blobs land (mutable tag moved remotely), swap
+					// back to the honest two-clause label.
+					const driftThreshold = 1 << 20 // 1 MiB
+					if cached && imgDelta > driftThreshold {
+						cached = false
+					}
+					if cached {
+						bar.Describe(fmt.Sprintf(
+							"Unpacking %s — %s",
+							reference, humanBytes(ctrNow),
+						))
+					} else {
+						bar.Describe(fmt.Sprintf(
+							"Pulling %s — %s downloaded, %s unpacked",
+							reference, humanBytes(imgDelta), humanBytes(ctrNow),
+						))
+					}
 				}
 				_ = bar.Add(1)
 				i++
@@ -349,7 +377,11 @@ func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 	if !opts.Global {
 		globalRootfs := runtime.GlobalBuildRootfs(opts.ToolName)
 		if _, err := os.Stat(globalRootfs); err == nil {
-			ctr, _ = r.tryCachedRootfs(mgr, id, imageRef, globalRootfs, cfg)
+			var loadErr error
+			ctr, loadErr = r.tryCachedRootfs(mgr, id, imageRef, globalRootfs, cfg)
+			if loadErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: buildRootfs %s failed to load: %v; falling back\n", globalRootfs, loadErr)
+			}
 		}
 	}
 	if ctr == nil {
@@ -442,18 +474,22 @@ func (r *ephemeralRunner) acquireContainer(
 	// 1. Project-local rootfs
 	if opts.ProjectRoot != "" {
 		p := runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)
-		if _, err := os.Stat(p); err == nil {
-			if ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg); err == nil {
+		if _, statErr := os.Stat(p); statErr == nil {
+			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg)
+			if err == nil {
 				return ctr, nil
 			}
+			fmt.Fprintf(os.Stderr, "warning: project rootfs %s failed to load: %v; falling back\n", p, err)
 		}
 	}
 	// 2. Global build rootfs
 	if opts.Tool.BuildRootfs != "" {
-		if _, err := os.Stat(opts.Tool.BuildRootfs); err == nil {
-			if ctr, err := r.tryCachedRootfs(mgr, id, imageRef, opts.Tool.BuildRootfs, cfg); err == nil {
+		if _, statErr := os.Stat(opts.Tool.BuildRootfs); statErr == nil {
+			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, opts.Tool.BuildRootfs, cfg)
+			if err == nil {
 				return ctr, nil
 			}
+			fmt.Fprintf(os.Stderr, "warning: buildRootfs %s failed to load: %v; falling back\n", opts.Tool.BuildRootfs, err)
 		}
 	}
 	// 3. Rootfs cache
@@ -472,15 +508,24 @@ func (r *ephemeralRunner) tryCachedRootfs(
 		return nil, err
 	}
 	cloned := filepath.Join(containerDir, "rootfs.ext4")
-	if err := copyFile(rootfsSource, cloned); err != nil {
+	if err := cache.CloneOrCopyFile(rootfsSource, cloned); err != nil {
+		_ = os.RemoveAll(containerDir)
 		return nil, err
 	}
-	img, err := mgr.ImageGet(imageRef, true)
+	// Image must already be in the local content store — a persisted rootfs
+	// was produced by pulling the same reference at install/setup time.
+	img, err := mgr.ImageGet(imageRef, false)
 	if err != nil {
+		_ = os.RemoveAll(containerDir)
 		return nil, err
 	}
 	defer img.Close()
-	return mgr.CreateContainerFromImage(id, img, bridge.Block(cloned, "/"), cfg)
+	ctr, err := mgr.CreateContainerFromImage(id, img, bridge.Block(cloned, "/"), cfg)
+	if err != nil {
+		_ = os.RemoveAll(containerDir)
+		return nil, err
+	}
+	return ctr, nil
 }
 
 func (r *ephemeralRunner) tryRootfsCacheHit(

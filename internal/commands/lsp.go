@@ -16,14 +16,13 @@ var lspCmd = &cobra.Command{
 	Short: "Run the LSP server for <tool> in a container and proxy stdio",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tool := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
 			return err
 		}
-		def, ok := cfg.Tools[tool]
-		if !ok {
-			return errs.ToolNotInstalledError(tool)
+		tool, def, _, err := resolveToolOrShim(cfg, args[0])
+		if err != nil {
+			return err
 		}
 		if def.LSP == nil {
 			return errs.Configf("tool %q has no LSP configuration", tool)

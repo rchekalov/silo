@@ -23,6 +23,8 @@ Every tool runs in its own Apple Container micro-VM. No access to SSH keys, clou
 
 If the tool is already installed, `silo install` refuses (unlike prior behaviour). Use `--force` for a true reinstall, or `silo use` to pin a different version for the current project.
 
+Registry entries may declare `postInstall:` — a list of shell commands run right after the image is pulled, baked into a persistent rootfs at `~/.silo/builds/<tool>/rootfs.ext4`. Subsequent `silo run` invocations boot from the baked rootfs, so apt packages, globally-installed npm/pip packages, etc. are always available without re-fetching. Used by `claude-code` (node:22-slim + `npm i -g @anthropic-ai/claude-code` + apt git/python3/etc.). The build step drops the tool's proxy allowlist so upstream package managers work regardless of what the tool is permitted to reach at runtime.
+
 ### Project Version Pinning (pyenv/asdf-style)
 
 - `silo use python@3.12` — record a project pin in `.siloconf` (writes `tools:` + `overrides:` as needed). Does **not** install — run `silo sync` after.

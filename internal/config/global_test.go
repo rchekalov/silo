@@ -3,6 +3,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -71,5 +72,40 @@ tools:
 	}
 	if n, _ := c.ResolveShim("node"); n != "" {
 		t.Fatalf("expected empty, got %q", n)
+	}
+}
+
+func TestResolveShimAll(t *testing.T) {
+	src := `
+version: 1
+tools:
+  python:
+    image: docker.io/library/python:3.12-slim
+    shims:
+      - python
+      - pip
+  python2:
+    image: docker.io/library/python:2.7-slim
+    shims:
+      - python
+  node:
+    image: docker.io/library/node:22-slim
+    shims:
+      - node
+      - npm
+`
+	var c GlobalConfig
+	if err := yaml.Unmarshal([]byte(src), &c); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := c.ResolveShimAll("missing"); got != nil {
+		t.Fatalf("expected nil for unknown shim, got %v", got)
+	}
+	if got := c.ResolveShimAll("npm"); !reflect.DeepEqual(got, []string{"node"}) {
+		t.Fatalf("unique match: got %v", got)
+	}
+	if got := c.ResolveShimAll("python"); !reflect.DeepEqual(got, []string{"python", "python2"}) {
+		t.Fatalf("multi-match must be sorted: got %v", got)
 	}
 }

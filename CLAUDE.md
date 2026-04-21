@@ -394,6 +394,7 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 | `ports` | []PortMapping | nil | Port forwarding |
 | `build_rootfs` | string | "" | Path to built rootfs |
 | `build_script` | string | "" | Setup script reference |
+| `postInstall` | []string | nil | Registry-level shell commands baked into a persistent `build_rootfs` during `silo install` (e.g. `apt-get install git && npm i -g @anthropic-ai/claude-code`). Executed with `HostAccess` + proxy allowlist dropped so upstream package managers work; runtime keeps the original allowlist. |
 | `lsp` | *LspConfig | nil | LSP server config |
 
 ## Key Patterns & Conventions

@@ -32,6 +32,10 @@ type Installer struct {
 	PullImage func(reference string, tool *config.ToolDefinition) error
 	// RunCaptured is used by auto-discovery. If nil, discovery is skipped.
 	RunCaptured CaptureRunFunc
+	// RunSetup runs a setup command in a writable VM and persists the rootfs
+	// at `target`. Used to bake registry-level `postInstall:` scripts during
+	// install. If nil, postInstall scripts are skipped with a warning.
+	RunSetup func(toolName string, tool config.ToolDefinition, command string, args []string, target string) (int32, error)
 }
 
 // ReservedNames cannot be used as tool names — they clash with subcommands.
@@ -119,6 +123,10 @@ func (in *Installer) Install(opts InstallOptions) (config.ToolDefinition, error)
 		}
 	}
 
+	if err := in.runPostInstall(&def, opts.Name); err != nil {
+		return def, err
+	}
+
 	if err := in.Shims.CreateShims(def, opts.Name); err != nil {
 		return def, err
 	}
@@ -204,6 +212,51 @@ func (in *Installer) autoDiscoverShims(def *config.ToolDefinition, name string) 
 	for _, n := range names {
 		def.Shims = append(def.Shims, config.ParseShim(n))
 	}
+	return nil
+}
+
+// runPostInstall bakes the tool's registry-level postInstall script into a
+// persistent global rootfs. The original proxy allowlist (if any) is dropped
+// for the build step so apt-get / npm install / etc. reach their upstreams
+// regardless of what the tool is permitted to touch at runtime.
+func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) error {
+	if len(def.PostInstall) == 0 {
+		return nil
+	}
+	if in.RunSetup == nil {
+		fmt.Fprintf(os.Stderr, "warning: %s has postInstall steps but no RunSetup hook; skipping\n", name)
+		return nil
+	}
+
+	script := strings.Join(def.PostInstall, " && ")
+	target := runtime.GlobalBuildRootfs(name)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("postInstall: prepare build dir: %v", err)
+	}
+
+	// Broaden network for the build step: keep HostAccess, drop the proxy
+	// allowlist. The original def (with proxy) is what we persist for runtime.
+	buildDef := *def
+	if buildDef.Network != nil {
+		n := *buildDef.Network
+		n.Proxy = nil
+		buildDef.Network = &n
+	} else {
+		buildDef.Network = &config.NetworkConfig{HostAccess: true}
+	}
+
+	fmt.Fprintf(os.Stderr, "Running postInstall for %s...\n", name)
+	exit, err := in.RunSetup(name, buildDef, "sh", []string{"-c", script}, target)
+	if err != nil {
+		return fmt.Errorf("postInstall: %v", err)
+	}
+	if exit != 0 {
+		return fmt.Errorf("postInstall exited %d", exit)
+	}
+
+	def.BuildRootfs = target
+	def.BuildScript = "sh -c " + script
+	def.BuildScope = "global"
 	return nil
 }
 

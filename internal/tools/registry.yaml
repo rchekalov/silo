@@ -199,9 +199,15 @@ tools:
 
   claude-code:
     description: Claude Code AI coding assistant (isolated)
-    image: docker.io/silotools/claude-code:latest
+    image: docker.io/library/node:22-slim
     shims:
       - claude
+    # Baked on top of node:22-slim during `silo install`. No prebuilt image
+    # on Docker Hub — the rootfs is produced locally and cached at
+    # ~/.silo/builds/claude-code/rootfs.ext4.
+    postInstall:
+      - apt-get update && apt-get install -y --no-install-recommends python3 python3-pip git curl openssh-client ca-certificates build-essential jq ripgrep && rm -rf /var/lib/apt/lists/*
+      - npm install -g @anthropic-ai/claude-code
     cache:
       - guest: /root/.claude
         host: ~/.silo/cache/claude-code/config
@@ -228,3 +234,4 @@ tools:
           - proxy.golang.org
         deny:
           - "*"
+
