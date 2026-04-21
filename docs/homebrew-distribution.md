@@ -31,8 +31,7 @@ Key formula properties:
 - `depends_on "go" => :build` and `depends_on "swift" => :build` — Homebrew resolves the toolchains.
 - `depends_on :macos`, `depends_on arch: :arm64`, `depends_on macos: :tahoe` — macOS 26 on Apple Silicon only.
 - `install` is one line: `make release-bundle PREFIX=#{prefix} VERSION=#{version}`. That target is defined in the main repo's `Makefile` and is the contract between silo and Homebrew.
-- `caveats` tells the user about `PATH`, `brew install container`, and the one-time runtime bootstrap.
-- The Apple Container CLI is intentionally **not** a formula dependency — silo surfaces a clear error at runtime if it's missing.
+- `caveats` tells the user about `PATH` and the one-time runtime bootstrap.
 
 ### The `release-bundle` Makefile target
 

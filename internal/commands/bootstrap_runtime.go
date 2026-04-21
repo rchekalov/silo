@@ -14,8 +14,8 @@ import (
 // bootstrapRuntimeCmd is a hidden entry point used by the release workflow to
 // produce ~/.silo/vmlinux and ~/.silo/initfs.ext4 without booting a VM or
 // pulling any OCI images. It's intentionally separate from `silo install` so
-// CI can run it on a clean runner that doesn't have the Apple Container CLI
-// or Virtualization.framework access.
+// CI can run it on a clean runner that doesn't have Virtualization.framework
+// access.
 var bootstrapRuntimeCmd = &cobra.Command{
 	Use:    "bootstrap-runtime",
 	Short:  "Download or build the silo runtime (vmlinux + initfs.ext4).",

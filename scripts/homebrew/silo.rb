@@ -40,9 +40,6 @@ class Silo < Formula
         echo 'eval "$(silo shellenv)"' >> ~/.zshrc           # permanent (zsh)
         echo 'eval "$(silo shellenv)"' >> ~/.bashrc          # permanent (bash)
 
-      Silo requires the Apple Container CLI:
-        brew install container
-
       First `silo install` downloads a ~285 MB prebuilt runtime (one-time, ~30 seconds).
       Without network access it falls back to building from source (~5 minutes).
     EOS

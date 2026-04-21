@@ -33,7 +33,6 @@ Silo fixes both by running tools in a micro-VM that only sees the project direct
 
 - Apple Silicon Mac (M1+)
 - macOS 26 (Tahoe) or later
-- Apple Container CLI: `brew install container`
 
 ## Install
 
