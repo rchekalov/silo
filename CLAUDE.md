@@ -447,7 +447,7 @@ swiftly (Swift version manager)
 
 ## Known Issues
 
-1. **First `silo install` takes ~5 minutes.** Downloads kernel, installs Swift toolchain, cross-compiles vminitd. One-time cost cached at `~/.silo/`.
+1. **First `silo install` downloads a ~285 MB prebuilt runtime bundle (~30 s).** The bundle (vmlinux + initfs.ext4) is published as a GitHub Release asset alongside each tagged version. Without network access, `silo` falls back to building from source (~5 min: kernel download + Swift toolchain install + vminitd cross-compile), which auto-clones `apple/containerization` into `~/.silo/.local/containerization`. Both paths cache their output at `~/.silo/`.
 
 2. **Entitlements require ad-hoc signing.** Binary must be codesigned after every build.
 

@@ -6,8 +6,11 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,14 +18,33 @@ import (
 
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/runtime"
+	"github.com/rchekalov/silo/internal/version"
 )
 
 const (
-	kataVersion           = "3.17.0"
-	kernelPathInTarball   = "opt/kata/share/kata-containers/vmlinux.container"
-	vminitdSwiftVersion   = "6.3.0"
-	vminitdSDKURL         = "https://download.swift.org/swift-6.3-release/static-sdk/swift-6.3-RELEASE/swift-6.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz"
+	kataVersion         = "3.17.0"
+	kernelPathInTarball = "opt/kata/share/kata-containers/vmlinux.container"
+	vminitdSwiftVersion = "6.3.0"
+	vminitdSDKURL       = "https://download.swift.org/swift-6.3-release/static-sdk/swift-6.3-RELEASE/swift-6.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz"
+
+	// containerizationRef pins the apple/containerization tag used by the
+	// source-build fallback. Keep aligned with swift-bridge/Package.resolved so
+	// dev builds and the source fallback resolve the same revision.
+	containerizationRef    = "0.30.1"
+	containerizationGitURL = "https://github.com/apple/containerization.git"
+
+	// runtimeBundleAsset names the asset attached to GitHub releases by the
+	// release workflow. The client tries to download this before falling back
+	// to building the runtime from source.
+	runtimeBundleAsset    = "silo-runtime-arm64.tar.gz"
+	runtimeBundleChecksum = runtimeBundleAsset + ".sha256"
 )
+
+// runtimeBundleBaseURL is overridable in tests. Production URL is derived from
+// the baked-in silo version.
+var runtimeBundleBaseURL = func() string {
+	return fmt.Sprintf("https://github.com/rchekalov/silo/releases/download/v%s", version.Version)
+}
 
 // RuntimeReady reports whether vmlinux + initfs.ext4 are both installed.
 func RuntimeReady() bool {
@@ -31,12 +53,28 @@ func RuntimeReady() bool {
 	return kernErr == nil && iniErr == nil
 }
 
-// EnsureRuntime fetches and builds every prerequisite (one-time, ~5 min on
-// first run, cached at ~/.silo/ thereafter). Safe to call repeatedly.
+// EnsureRuntime fetches or builds every prerequisite. On the happy path, the
+// client downloads a prebuilt runtime bundle from the matching GitHub release
+// (~30 s). If that's unavailable — offline, dev build, pre-release tag without
+// a bundle — it falls back to downloading the kernel and building vminitd from
+// source (~5 min). Safe to call repeatedly; idempotent once ~/.silo/vmlinux and
+// ~/.silo/initfs.ext4 exist.
 func EnsureRuntime() error {
 	if err := runtime.EnsureDirectories(); err != nil {
 		return err
 	}
+	if RuntimeReady() {
+		return nil
+	}
+
+	if ok, err := tryDownloadRuntimeBundle(); err != nil {
+		// Hard error (e.g., the bundle was found but extraction failed in a
+		// way that corrupts the install). Surface it instead of masking.
+		return err
+	} else if ok {
+		return nil
+	}
+
 	if err := ensureKernel(); err != nil {
 		return err
 	}
@@ -100,7 +138,7 @@ func ensureInitfs() error {
 		return nil
 	}
 
-	containerizationDir, err := findContainerizationCheckout()
+	containerizationDir, err := ensureContainerizationCheckout()
 	if err != nil {
 		return err
 	}
@@ -255,7 +293,55 @@ func ensureSwiftlyToolchain() (string, error) {
 	return swiftBin, nil
 }
 
-func findContainerizationCheckout() (string, error) {
+// ensureContainerizationCheckout returns a directory holding the
+// apple/containerization source tree. It prefers an existing SwiftPM-resolved
+// checkout under the current working directory (so `make build` keeps working
+// without a second clone), and otherwise clones the pinned tag into
+// ~/.silo/.local/containerization.
+//
+// This is what makes the build-from-source fallback work for users who
+// installed silo via Homebrew (and therefore have no project checkout).
+func ensureContainerizationCheckout() (string, error) {
+	if dir, ok := existingContainerizationCheckout(); ok {
+		return dir, nil
+	}
+
+	dest := filepath.Join(runtime.LocalDownloads(), "containerization")
+	if _, err := os.Stat(filepath.Join(dest, "vminitd", "Package.swift")); err == nil {
+		return dest, nil
+	}
+
+	if err := os.MkdirAll(runtime.LocalDownloads(), 0o755); err != nil {
+		return "", err
+	}
+	// Remove partial clones from previous interrupted runs.
+	_ = os.RemoveAll(dest)
+
+	fmt.Fprintf(os.Stderr, "Cloning apple/containerization@%s...\n", containerizationRef)
+	if err := runCmd("/usr/bin/git",
+		"clone", "--depth=1",
+		"--branch", containerizationRef,
+		containerizationGitURL,
+		dest,
+	); err != nil {
+		return "", errs.Runtimef(
+			"could not fetch apple/containerization@%s: %v (check your network, or install silo from a source checkout)",
+			containerizationRef, err,
+		)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "vminitd", "Package.swift")); err != nil {
+		return "", errs.Runtimef(
+			"cloned apple/containerization but vminitd/Package.swift is missing — unexpected repo layout at ref %s",
+			containerizationRef,
+		)
+	}
+	return dest, nil
+}
+
+// existingContainerizationCheckout probes the two SwiftPM locations a source
+// build of silo would populate. Only used as a fast-path for developers
+// working inside the silo repo.
+func existingContainerizationCheckout() (string, bool) {
 	cwd, _ := os.Getwd()
 	candidates := []string{
 		filepath.Join(cwd, ".build", "checkouts", "containerization"),
@@ -263,13 +349,148 @@ func findContainerizationCheckout() (string, error) {
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(filepath.Join(c, "vminitd", "Package.swift")); err == nil {
-			return c, nil
+			return c, true
 		}
 	}
-	return "", errs.Runtimef(
-		"cannot find containerization source checkout. Run from the silo project directory, " +
-			"or build and install vminitd manually. See: https://github.com/apple/containerization",
-	)
+	return "", false
+}
+
+// tryDownloadRuntimeBundle fetches silo-runtime-arm64.tar.gz + its .sha256
+// from the GitHub release matching the current silo version, verifies the
+// checksum, and extracts vmlinux + initfs.ext4 into ~/.silo/. Returns
+// (true, nil) on success. On any transient failure (404, network error,
+// checksum mismatch), it logs a one-line note and returns (false, nil) so the
+// caller can fall back to building from source. Only hard extraction failures
+// that would leave ~/.silo/ corrupted bubble up as errors.
+func tryDownloadRuntimeBundle() (bool, error) {
+	base := runtimeBundleBaseURL()
+	bundleURL := base + "/" + runtimeBundleAsset
+	sumURL := base + "/" + runtimeBundleChecksum
+
+	local := runtime.LocalDownloads()
+	if err := os.MkdirAll(local, 0o755); err != nil {
+		return false, err
+	}
+	bundlePath := filepath.Join(local, runtimeBundleAsset)
+	sumPath := filepath.Join(local, runtimeBundleChecksum)
+
+	// Best-effort cleanup of any partial download from a prior run.
+	_ = os.Remove(bundlePath)
+	_ = os.Remove(sumPath)
+
+	fmt.Fprintln(os.Stderr, "Downloading prebuilt silo runtime...")
+	if err := httpDownload(sumURL, sumPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Prebuilt runtime unavailable (%v); building from source instead.\n", err)
+		return false, nil
+	}
+	want, err := readExpectedSha256(sumPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Prebuilt runtime checksum unreadable (%v); building from source instead.\n", err)
+		return false, nil
+	}
+	if err := httpDownload(bundleURL, bundlePath); err != nil {
+		fmt.Fprintf(os.Stderr, "Prebuilt runtime download failed (%v); building from source instead.\n", err)
+		return false, nil
+	}
+
+	got, err := sha256File(bundlePath)
+	if err != nil {
+		return false, err
+	}
+	if got != want {
+		fmt.Fprintf(os.Stderr,
+			"Prebuilt runtime checksum mismatch (want %s, got %s); building from source instead.\n",
+			want, got,
+		)
+		return false, nil
+	}
+
+	// Extract into a staging dir first so a partial extract doesn't pollute
+	// ~/.silo/ with half-written files that RuntimeReady() would then lie about.
+	stage := filepath.Join(local, "runtime-stage")
+	_ = os.RemoveAll(stage)
+	if err := os.MkdirAll(stage, 0o755); err != nil {
+		return false, err
+	}
+	if err := runCmd("/usr/bin/tar", "-xzf", bundlePath, "-C", stage); err != nil {
+		return false, errs.Runtimef("extract runtime bundle: %v", err)
+	}
+	for _, name := range []string{"vmlinux", "initfs.ext4"} {
+		src := filepath.Join(stage, name)
+		if _, err := os.Stat(src); err != nil {
+			return false, errs.Runtimef("runtime bundle missing %s", name)
+		}
+	}
+	for _, pair := range [][2]string{
+		{"vmlinux", runtime.Kernel()},
+		{"initfs.ext4", runtime.Initfs()},
+	} {
+		if err := copyBytes(filepath.Join(stage, pair[0]), pair[1]); err != nil {
+			return false, errs.Runtimef("install %s: %v", pair[0], err)
+		}
+	}
+	if err := os.Chmod(runtime.Kernel(), 0o755); err != nil {
+		return false, err
+	}
+	_ = os.RemoveAll(stage)
+	_ = os.Remove(bundlePath)
+	_ = os.Remove(sumPath)
+
+	fmt.Fprintln(os.Stderr, "Runtime installed from prebuilt bundle.")
+	return true, nil
+}
+
+// httpDownload fetches url to dest, returning an error with the HTTP status
+// when the server doesn't serve the asset (e.g., no prebuilt for this tag).
+func httpDownload(url, dest string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %s", resp.Status)
+	}
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+// readExpectedSha256 parses `shasum -a 256` format: "<hex>  <filename>".
+// Either the lone hex string or the full line is accepted.
+func readExpectedSha256(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 0 {
+		return "", fmt.Errorf("empty checksum file")
+	}
+	s := strings.ToLower(fields[0])
+	if len(s) != 64 {
+		return "", fmt.Errorf("not a sha256 hex string: %q", fields[0])
+	}
+	return s, nil
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func runCmd(name string, args ...string) error {

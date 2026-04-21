@@ -58,6 +58,28 @@ jobs:
           echo "$VERSION_OUT" | grep -q "${{ steps.meta.outputs.version }}" \
             || (echo "version mismatch"; exit 1)
 
+      # Build the prebuilt runtime bundle (vmlinux + initfs.ext4) so users who
+      # install silo via Homebrew don't have to cross-compile vminitd on their
+      # own machines. The hidden `bootstrap-runtime` subcommand runs the same
+      # bootstrap path used on a cold user install, but skips OCI pulls and
+      # VM boot — the bundle only needs the two files we tar up below.
+      - name: Build runtime bundle
+        run: |
+          set -euo pipefail
+          "$STAGE/bin/silo" bootstrap-runtime
+          mkdir -p runtime-dist
+          tar -czf runtime-dist/silo-runtime-arm64.tar.gz \
+            -C "$HOME/.silo" vmlinux initfs.ext4
+          ( cd runtime-dist && shasum -a 256 silo-runtime-arm64.tar.gz > silo-runtime-arm64.tar.gz.sha256 )
+          ls -la runtime-dist
+
+      - name: Upload runtime bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: silo-runtime-arm64
+          path: runtime-dist/
+          retention-days: 1
+
   publish-release:
     name: Create GitHub Release
     needs: verify
@@ -66,11 +88,22 @@ jobs:
       sha256: ${{ steps.sha.outputs.sha256 }}
 
     steps:
+      - name: Download runtime bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: silo-runtime-arm64
+          path: runtime-dist
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # Attach the prebuilt runtime so `silo install` on a fresh Homebrew
+          # machine can download vmlinux+initfs.ext4 instead of cross-compiling.
+          files: |
+            runtime-dist/silo-runtime-arm64.tar.gz
+            runtime-dist/silo-runtime-arm64.tar.gz.sha256
 
       - name: Compute sha256 of source tarball
         id: sha

@@ -36,7 +36,7 @@ This is a major onboarding barrier. Users expect `silo install python` to take s
 
 ## Action Items
 
-### Strategy 1: Prebuilt Runtime Bundle (effort: medium, impact: high)
+### Strategy 1: Prebuilt Runtime Bundle (effort: medium, impact: high) — **SHIPPED**
 
 Ship `vmlinux` + `initfs.ext4` as a GitHub Release asset. On first `silo install`:
 
@@ -50,26 +50,13 @@ Ship `vmlinux` + `initfs.ext4` as a GitHub Release asset. On first `silo install
 
 **RuntimeManager.swift changes:**
 
-```swift
-func ensureRuntime() async throws {
-    // Fast path: already bootstrapped
-    if hasKernel() && hasInitfs() { return }
+Implemented in [internal/engine/runtime.go](../internal/engine/runtime.go):
 
-    // Try prebuilt download first
-    if try await downloadPrebuiltRuntime() { return }
-
-    // Fallback: build from source (existing code)
-    try await bootstrapFromSource()
-}
-
-func downloadPrebuiltRuntime() async throws -> Bool {
-    let bundleURL = "https://github.com/rchekalov/silo/releases/latest/download/silo-runtime-arm64.tar.gz"
-    // Download with progress
-    // Verify SHA256 checksum (from manifest)
-    // Extract vmlinux + initfs.ext4 to ~/.silo/
-    // Return true on success
-}
-```
+- `EnsureRuntime()` tries `tryDownloadRuntimeBundle()` before falling back to the source-build path.
+- Bundle URL is `https://github.com/rchekalov/silo/releases/download/v<version>/silo-runtime-arm64.tar.gz` + a `.sha256` sidecar.
+- Failures (missing asset, checksum mismatch, network error) log a single warning and drop through to the source-build path — never a hard error.
+- The source-build fallback auto-clones `apple/containerization@<pinned>` into `~/.silo/.local/containerization`, so it works from anywhere (e.g., a Homebrew-installed silo).
+- The release workflow (`.github/workflows/release.yml`) runs the hidden `silo bootstrap-runtime` command on `macos-latest`, packages `vmlinux` + `initfs.ext4`, and attaches the tarball + checksum to each tagged release.
 
 **Build pipeline (GitHub Actions):**
 
