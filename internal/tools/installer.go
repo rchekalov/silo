@@ -105,17 +105,25 @@ func (in *Installer) Install(opts InstallOptions) (config.ToolDefinition, error)
 		}
 	}
 
+	// Pull the image before we publish the tool to config + shims. The pull
+	// is the long step the user might cancel; if we registered the tool
+	// first, a ^C would leave `silo list` claiming the tool is installed
+	// when the rootfs isn't actually on disk. Order:
+	//   1. pull image (cancellable)
+	//   2. create shims
+	//   3. write config entry
+	// An interrupted pull leaves nothing behind to clean up.
+	if in.PullImage != nil {
+		if err := in.PullImage(def.Image, &def); err != nil {
+			return def, err
+		}
+	}
+
 	if err := in.Shims.CreateShims(def, opts.Name); err != nil {
 		return def, err
 	}
 	if err := in.Config.InstallTool(opts.Name, def); err != nil {
 		return def, err
-	}
-
-	if in.PullImage != nil {
-		if err := in.PullImage(def.Image, &def); err != nil {
-			return def, err
-		}
 	}
 
 	warnIfShimBinNotOnPATH()
