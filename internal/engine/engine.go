@@ -5,11 +5,9 @@ package engine
 import (
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/runtime"
-	"github.com/schollz/progressbar/v3"
 )
 
 // ContainerEngine is the top-level facade used by CLI commands.
@@ -68,31 +66,11 @@ func (e *ContainerEngine) RunSetup(opts RunSetupOptions) (int32, error) {
 }
 
 // PullImage pulls an OCI reference, optionally caching the rootfs afterwards.
+// The ephemeral runner owns the progress spinner; this wrapper only prints
+// the final completion line.
 func (e *ContainerEngine) PullImage(reference string, cacheFor *config.ToolDefinition) error {
-	bar := progressbar.NewOptions(-1,
-		progressbar.OptionSetDescription("Pulling image "+reference),
-		progressbar.OptionSpinnerType(14),
-		progressbar.OptionThrottle(100*time.Millisecond),
-		progressbar.OptionClearOnFinish(),
-	)
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				_ = bar.Add(1)
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	}()
-
 	r := newEphemeralRunner(runtime.Kernel(), runtime.Initfs(), runtime.Root())
-	err := r.PullImage(reference, cacheFor)
-	close(done)
-	_ = bar.Finish()
-	if err != nil {
+	if err := r.PullImage(reference, cacheFor); err != nil {
 		return err
 	}
 	if cacheFor != nil {

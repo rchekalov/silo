@@ -11,15 +11,16 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
-	"github.com/rchekalov/silo/internal/engine/pullprogress"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/network"
 	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/tools"
+	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -61,17 +62,50 @@ func (r *ephemeralRunner) PullImage(reference string, cacheFor *config.ToolDefin
 	cfg.Arguments = []string{"/bin/true"}
 
 	// Apple Containerization doesn't feed progress through our bridge, so
-	// the best we can do from the Go side is tail the two directories bytes
-	// land in. Good enough to prove the pull is alive and growing.
-	watcher := pullprogress.Start(pullprogress.Options{
-		Reference:    reference,
-		ImagesDir:    runtime.ContentStore(),
-		ContainerDir: filepath.Join(r.rootPath, "containers", id),
-		Out:          os.Stderr,
-	})
-	defer watcher.Stop()
+	// we sample the two directories bytes land in (~/.silo/content for OCI
+	// blobs, and the container-specific rootfs.ext4 for unpack progress)
+	// and feed the deltas into schollz/progressbar. One writer, one spinner.
+	contentDir := runtime.ContentStore()
+	containerDir := filepath.Join(r.rootPath, "containers", id)
+	baseline := duBytes(contentDir)
+
+	bar := progressbar.NewOptions(-1,
+		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionSetDescription("Pulling "+reference),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionThrottle(100*time.Millisecond),
+		progressbar.OptionClearOnFinish(),
+	)
+	stopBar := make(chan struct{})
+	go func() {
+		spin := time.NewTicker(100 * time.Millisecond)
+		defer spin.Stop()
+		var i int
+		for {
+			select {
+			case <-stopBar:
+				return
+			case <-spin.C:
+				if i%5 == 0 { // resample bytes every ~500ms, cheap
+					imgDelta := duBytes(contentDir) - baseline
+					if imgDelta < 0 {
+						imgDelta = 0
+					}
+					ctrNow := duBytes(containerDir)
+					bar.Describe(fmt.Sprintf(
+						"Pulling %s — %s downloaded, %s unpacked",
+						reference, humanBytes(imgDelta), humanBytes(ctrNow),
+					))
+				}
+				_ = bar.Add(1)
+				i++
+			}
+		}
+	}()
 
 	ctr, err := mgr.CreateContainerFromRef(id, reference, rootfsSize, cfg)
+	close(stopBar)
+	_ = bar.Finish()
 	if err != nil {
 		return errs.Containerf("pull create: %v", err)
 	}
