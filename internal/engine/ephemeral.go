@@ -65,7 +65,7 @@ func (r *ephemeralRunner) PullImage(reference string, cacheFor *config.ToolDefin
 	// land in. Good enough to prove the pull is alive and growing.
 	watcher := pullprogress.Start(pullprogress.Options{
 		Reference:    reference,
-		ImagesDir:    runtime.ImageStore(),
+		ImagesDir:    runtime.ContentStore(),
 		ContainerDir: filepath.Join(r.rootPath, "containers", id),
 		Out:          os.Stderr,
 	})

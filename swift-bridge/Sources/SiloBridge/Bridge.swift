@@ -84,7 +84,7 @@ public func sb_manager_create(
         outError.pointee = nil
     } catch {
         outHandle.pointee = nil
-        outError.pointee = makeError(error.localizedDescription)
+        outError.pointee = makeError(String(describing: error))
     }
 }
 
@@ -218,7 +218,7 @@ public func sb_manager_create_container_from_ref(
             let handle = Unmanaged.passRetained(box_).toOpaque()
             callback(context, handle, nil)
         } catch {
-            callback(context, nil, makeError(error.localizedDescription))
+            callback(context, nil, makeError(String(describing: error)))
         }
     }
 }
@@ -321,7 +321,7 @@ public func sb_manager_create_container_from_image(
             let handle = Unmanaged.passRetained(box_).toOpaque()
             callback(context, handle, nil)
         } catch {
-            callback(context, nil, makeError(error.localizedDescription))
+            callback(context, nil, makeError(String(describing: error)))
         }
     }
 }
@@ -341,7 +341,7 @@ public func sb_container_create(
             try await box_.inner.create()
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -358,7 +358,7 @@ public func sb_container_start(
             try await box_.inner.start()
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -375,7 +375,7 @@ public func sb_container_stop(
             try await box_.inner.stop()
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -393,7 +393,7 @@ public func sb_container_wait(
             let exitStatus = try await box_.inner.wait()
             callback(context, exitStatus.exitCode, nil)
         } catch {
-            callback(context, -1, makeError(error.localizedDescription))
+            callback(context, -1, makeError(String(describing: error)))
         }
     }
 }
@@ -412,7 +412,7 @@ public func sb_container_resize(
             try await box_.inner.resize(to: Terminal.Size(width: cols, height: rows))
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -468,7 +468,7 @@ public func sb_container_exec(
             let processHandle = Unmanaged.passRetained(processBox).toOpaque()
             callback(context, processHandle, nil)
         } catch {
-            callback(context, nil, makeError(error.localizedDescription))
+            callback(context, nil, makeError(String(describing: error)))
         }
     }
 }
@@ -485,7 +485,7 @@ public func sb_process_start(
             try await box_.inner.start()
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -502,7 +502,7 @@ public func sb_process_wait(
             let exitStatus = try await box_.inner.wait()
             callback(context, exitStatus.exitCode, nil)
         } catch {
-            callback(context, -1, makeError(error.localizedDescription))
+            callback(context, -1, makeError(String(describing: error)))
         }
     }
 }
@@ -540,7 +540,7 @@ public func sb_image_store_get(
             let handle = Unmanaged.passRetained(box_).toOpaque()
             callback(context, handle, nil)
         } catch {
-            callback(context, nil, makeError(error.localizedDescription))
+            callback(context, nil, makeError(String(describing: error)))
         }
     }
 }
@@ -560,7 +560,7 @@ public func sb_image_store_pull(
             _ = try await manager.inner.imageStore.pull(reference: ref)
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -591,7 +591,7 @@ public func sb_image_store_delete(
             try await manager.inner.imageStore.delete(reference: ref, performCleanup: performCleanup)
             callback(context, nil)
         } catch {
-            callback(context, makeError(error.localizedDescription))
+            callback(context, makeError(String(describing: error)))
         }
     }
 }
@@ -609,7 +609,7 @@ public func sb_image_store_cleanup_orphans(
             let (_, freed) = try await manager.inner.imageStore.cleanUpOrphanedBlobs()
             callback(context, freed, nil)
         } catch {
-            callback(context, 0, makeError(error.localizedDescription))
+            callback(context, 0, makeError(String(describing: error)))
         }
     }
 }
@@ -627,7 +627,7 @@ public func sb_image_store_orphans_size(
             let size = try await manager.inner.imageStore.calculateOrphanedBlobsSize()
             callback(context, size, nil)
         } catch {
-            callback(context, 0, makeError(error.localizedDescription))
+            callback(context, 0, makeError(String(describing: error)))
         }
     }
 }

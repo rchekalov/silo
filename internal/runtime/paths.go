@@ -25,6 +25,11 @@ func ShimBin() string       { return filepath.Join(Root(), "bin") }
 func Kernel() string        { return filepath.Join(Root(), "vmlinux") }
 func Initfs() string        { return filepath.Join(Root(), "initfs.ext4") }
 func ImageStore() string    { return filepath.Join(Root(), "images") }
+// ContentStore is where Apple Containerization actually writes pulled OCI
+// blobs (content-addressable, under `blobs/sha256/`). ImageStore() above is
+// historical — we created it early and kept the name, but the framework
+// picked "content" internally. pullprogress measures against this path.
+func ContentStore() string  { return filepath.Join(Root(), "content") }
 func Containers() string    { return filepath.Join(Root(), "containers") }
 func Cache() string         { return filepath.Join(Root(), "cache") }
 func Logs() string          { return filepath.Join(Root(), "logs") }
