@@ -105,6 +105,57 @@ func TestApplyOverridePortsReplace(t *testing.T) {
 	}
 }
 
+func TestApplyOverrideAppendsPostInstall(t *testing.T) {
+	def := ToolDefinition{PostInstall: []string{"apt-get install base"}}
+	out := ApplyOverride(def, ToolOverride{PostInstall: []string{"apt-get install kotlin"}})
+	if len(out.PostInstall) != 2 {
+		t.Fatalf("postInstall %+v", out.PostInstall)
+	}
+	if out.PostInstall[0] != "apt-get install base" || out.PostInstall[1] != "apt-get install kotlin" {
+		t.Fatalf("postInstall order %+v", out.PostInstall)
+	}
+	// Original def untouched.
+	if len(def.PostInstall) != 1 {
+		t.Fatalf("def mutated: %+v", def.PostInstall)
+	}
+}
+
+func TestApplyOverrideCacheDedupesByGuest(t *testing.T) {
+	def := ToolDefinition{
+		Cache: []CacheMount{
+			{Guest: "/root/.npm", Host: "~/.silo/cache/node/npm"},
+			{Guest: "/root/.claude", Host: "~/.silo/cache/claude-code/config", NoGC: true},
+		},
+	}
+	override := ToolOverride{
+		Cache: []CacheMount{
+			{Guest: "/root/.npm", Host: "~/custom/npm"}, // replaces
+			{Guest: "/root/.gradle", Host: "~/.silo/cache/claude-code/gradle"},
+		},
+	}
+	out := ApplyOverride(def, override)
+	if len(out.Cache) != 3 {
+		t.Fatalf("cache len=%d %+v", len(out.Cache), out.Cache)
+	}
+	if out.Cache[0].Host != "~/custom/npm" {
+		t.Fatalf("cache[0] not replaced: %+v", out.Cache[0])
+	}
+	if !out.Cache[1].NoGC {
+		t.Fatalf("cache[1] noGC lost: %+v", out.Cache[1])
+	}
+	if out.Cache[2].Guest != "/root/.gradle" {
+		t.Fatalf("cache[2] not appended: %+v", out.Cache[2])
+	}
+}
+
+func TestApplyOverrideEmptyPostInstallKeepsBase(t *testing.T) {
+	def := ToolDefinition{PostInstall: []string{"registry step"}}
+	out := ApplyOverride(def, ToolOverride{})
+	if len(out.PostInstall) != 1 || out.PostInstall[0] != "registry step" {
+		t.Fatalf("postInstall %+v", out.PostInstall)
+	}
+}
+
 func TestApplyOverrideEmptyIsIdentity(t *testing.T) {
 	def := ToolDefinition{Image: "a:1", Env: map[string]string{"K": "V"}}
 	out := ApplyOverride(def, ToolOverride{})

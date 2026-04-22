@@ -70,6 +70,13 @@ silo build --all --rerun                # refresh every tool with a stored scrip
 silo build node --remove                # delete the stored rootfs
                                         # `silo setup` / `silo rebuild` remain as deprecated aliases
 
+# Project-scoped package additions (for claude-code and other tools)
+silo add kotlin                         # JDK 17 + Kotlin into claude-code (project-scoped bake)
+silo add ripgrep jq                     # arbitrary apt packages
+silo add --for node --step 'npm install -g typescript'   # raw shell step
+silo add kotlin --no-sync               # record in .siloconf only; run `silo sync` later
+silo add kotlin --global                # write to ~/.silo/siloconf instead
+
 # Diagnostics (was `status` — now split)
 silo doctor                           # runtime readiness: kernel, initfs
 silo current                          # installed tools + active project overrides
@@ -369,6 +376,15 @@ overrides:
   python:
     env:
       PYTHONPATH: /workspace/src
+  claude-code:
+    # Project-specific bake steps — appended to the registry's postInstall.
+    # `silo sync` produces <projectRoot>/.silo/claude-code/rootfs.ext4.
+    postInstall:
+      - apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless kotlin && rm -rf /var/lib/apt/lists/*
+    # Cache mounts added on top of the registry's; dedup is by guest path.
+    cache:
+      - guest: /root/.gradle
+        host: ~/.silo/cache/claude-code/gradle
 ```
 
 The project's tool set is the union of `tools:` and the keys of `overrides:`. `silo sync` uses this set to decide what to install/pull; `silo clean` uses it to decide what artifacts to reclaim.

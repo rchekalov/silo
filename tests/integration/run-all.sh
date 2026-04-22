@@ -67,6 +67,7 @@ run_test "exit-codes" "$SCRIPT_DIR/execution/exit-codes.sh" "python"
 run_test "multi-tool" "$SCRIPT_DIR/execution/multi-tool.sh" ""
 run_test "arg-passthrough" "$SCRIPT_DIR/execution/arg-passthrough.sh" "python"
 run_test "shim-flow" "$SCRIPT_DIR/execution/shim-flow.sh" "python"
+run_test "add-kotlin" "$SCRIPT_DIR/execution/add-kotlin.sh" "claude-code"
 
 echo ""
 echo "--- Cache ---"

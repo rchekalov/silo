@@ -13,6 +13,15 @@ type DetectedTool struct {
 	Markers []string // marker files that triggered the match (e.g. ["package.json"])
 }
 
+// DetectedAddon is a language recognized by marker files that doesn't map to
+// a first-class silo tool. Addons extend an existing tool's rootfs (typically
+// claude-code) with extra packages via .siloconf postInstall — they never go
+// into `tools:` because they have no VM of their own.
+type DetectedAddon struct {
+	Name    string   // language key (kotlin, java, ruby…)
+	Markers []string // marker files that triggered the match
+}
+
 // markerMap maps tool names to their marker files. Order of iteration matches
 // the Swift implementation's detection order.
 var markerMap = []struct {
@@ -24,6 +33,18 @@ var markerMap = []struct {
 	{"rust", []string{"Cargo.toml"}},
 	{"go", []string{"go.mod"}},
 	{"deno", []string{"deno.json", "deno.jsonc"}},
+}
+
+// addonMarkerMap is the language-level version of markerMap. Language names
+// here must match keys in language_addons.yaml so `silo init` / `silo add`
+// can look up the apt packages to install.
+var addonMarkerMap = []struct {
+	Name  string
+	Files []string
+}{
+	{"kotlin", []string{"build.gradle.kts", "settings.gradle.kts"}},
+	{"java", []string{"pom.xml", "build.gradle"}},
+	{"ruby", []string{"Gemfile"}},
 }
 
 // defaultExcludes lists directories typically excluded from workspace mounts
@@ -52,6 +73,29 @@ func Detect(dir string) []DetectedTool {
 		}
 		if len(found) > 0 {
 			out = append(out, DetectedTool{Name: entry.Tool, Markers: found})
+		}
+	}
+	return out
+}
+
+// DetectAddons scans `dir` for language-addon markers (Kotlin, Java, Ruby…)
+// and returns every matched language. Addons are distinct from first-class
+// tools: they don't get their own VM, they extend a host tool's rootfs via
+// project-level postInstall.
+func DetectAddons(dir string) []DetectedAddon {
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	var out []DetectedAddon
+	for _, entry := range addonMarkerMap {
+		var found []string
+		for _, f := range entry.Files {
+			if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+				found = append(found, f)
+			}
+		}
+		if len(found) > 0 {
+			out = append(out, DetectedAddon{Name: entry.Name, Markers: found})
 		}
 	}
 	return out

@@ -112,6 +112,20 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 	}
+
+	// Project-scoped bakes: if .siloconf adds extra postInstall steps for a
+	// tool, produce <projectRoot>/.silo/<tool>/rootfs.ext4 that the runtime
+	// picks up via engine.ephemeral's project-rootfs probe. Idempotent —
+	// ApplyProjectPostInstall hashes the steps and skips when up-to-date.
+	if merged != nil && root != "" {
+		for _, tool := range projectTools {
+			if err := bakeProjectPostInstallFor(tool, merged, global, root); err != nil {
+				failed = append(failed, fmt.Sprintf("%s (bake): %v", tool, err))
+				fmt.Fprintf(os.Stderr, "error: %s (bake): %v\n", tool, err)
+			}
+		}
+	}
+
 	if len(failed) > 0 {
 		return fmt.Errorf("pull completed with errors:\n  %s", strings.Join(failed, "\n  "))
 	}
@@ -259,6 +273,41 @@ func rootfsCacheHit(def config.ToolDefinition) (bool, error) {
 	digest := img.Digest()
 	size := def.RootfsSizeMB * 1024 * 1024
 	return cache.NewRootfs("").Has(digest, size), nil
+}
+
+// bakeProjectPostInstallFor runs a project-scoped bake for a single tool
+// when the merged .siloconf contains extra postInstall steps. Shared between
+// `silo sync` and `silo add` so both surface identical behaviour.
+func bakeProjectPostInstallFor(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) error {
+	if merged == nil || root == "" {
+		return nil
+	}
+	override, ok := merged.Overrides[tool]
+	if !ok || len(override.PostInstall) == 0 {
+		return nil
+	}
+	if _, installed := global.Tools[tool]; !installed {
+		// Project config references a tool that isn't globally installed.
+		// The `silo sync` planner handles install first, so this is only
+		// reachable when a caller (e.g. `silo add`) invokes the bake for a
+		// tool the user hasn't installed yet. Surface the mismatch.
+		return fmt.Errorf("tool %q is not installed; run `silo install %s` first", tool, tool)
+	}
+	def, _ := resolvePullDef(tool, merged, global)
+	e := engine.NewContainerEngine(global)
+	if err := e.EnsureRuntime(); err != nil {
+		return err
+	}
+	baked, err := tools.ApplyProjectPostInstall(bakeAdapter(e), tool, def, override.PostInstall, root)
+	if err != nil {
+		return err
+	}
+	if baked {
+		fmt.Printf("  %-20s  baked project rootfs at %s\n", tool, runtime.ProjectRootfs(root, tool))
+	} else {
+		fmt.Printf("  %-20s  project rootfs up-to-date\n", tool)
+	}
+	return nil
 }
 
 func resolvedStart(start string) string {

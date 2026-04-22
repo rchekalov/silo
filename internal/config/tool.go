@@ -188,5 +188,27 @@ func ApplyOverride(def ToolDefinition, o ToolOverride) ToolDefinition {
 	if o.Ports != nil {
 		out.Ports = append([]PortMapping(nil), o.Ports...)
 	}
+	if len(o.PostInstall) > 0 {
+		// Registry steps run first (base image prep), then project steps on top.
+		// Detaching with append([]string(nil), ...) so neither input slice is shared.
+		combined := append([]string(nil), def.PostInstall...)
+		combined = append(combined, o.PostInstall...)
+		out.PostInstall = combined
+	}
+	if len(o.Cache) > 0 {
+		out.Cache = mergeCacheMounts(def.Cache, o.Cache)
+	}
 	return out
+}
+
+// ExtraPostInstall returns the override's postInstall steps (what was appended
+// on top of the registry base). It is a convenience for callers that need to
+// know whether a project added any bake steps without recomputing the diff.
+//
+// The slice is a fresh copy — safe to mutate.
+func (o ToolOverride) ExtraPostInstall() []string {
+	if len(o.PostInstall) == 0 {
+		return nil
+	}
+	return append([]string(nil), o.PostInstall...)
 }

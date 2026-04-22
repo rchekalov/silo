@@ -254,6 +254,70 @@ func TestRemoveToolMissing(t *testing.T) {
 	}
 }
 
+func TestMergeOverAppendsPostInstall(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"claude-code": {PostInstall: []string{"base-step"}},
+		},
+	}
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"claude-code": {PostInstall: []string{"overlay-step"}},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["claude-code"].PostInstall
+	if len(got) != 2 || got[0] != "base-step" || got[1] != "overlay-step" {
+		t.Fatalf("postInstall %+v", got)
+	}
+}
+
+func TestMergeOverDedupsCacheByGuest(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"claude-code": {
+				Cache: []CacheMount{{Guest: "/root/.npm", Host: "~/.silo/cache/node/npm"}},
+			},
+		},
+	}
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"claude-code": {
+				Cache: []CacheMount{
+					{Guest: "/root/.npm", Host: "~/custom/npm"}, // replaces base entry
+					{Guest: "/root/.gradle", Host: "~/.silo/cache/claude-code/gradle"},
+				},
+			},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["claude-code"].Cache
+	if len(got) != 2 {
+		t.Fatalf("cache len=%d %+v", len(got), got)
+	}
+	// First entry is the replaced /root/.npm with overlay's host path.
+	if got[0].Guest != "/root/.npm" || got[0].Host != "~/custom/npm" {
+		t.Fatalf("cache[0] not replaced: %+v", got[0])
+	}
+	if got[1].Guest != "/root/.gradle" {
+		t.Fatalf("cache[1] not appended: %+v", got[1])
+	}
+}
+
+func TestCleanupEmptyKeepsOverrideWithPostInstall(t *testing.T) {
+	c := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"claude-code": {PostInstall: []string{"apt-get install -y kotlin"}},
+		},
+	}
+	// Round-trip via MergeOver which calls cleanupEmpty indirectly; instead
+	// call directly through RemovePort which triggers cleanupEmpty unconditionally.
+	c.RemovePort("claude-code", 9999, 9999)
+	if _, ok := c.Overrides["claude-code"]; !ok {
+		t.Fatalf("override dropped despite non-empty postInstall: %+v", c.Overrides)
+	}
+}
+
 func TestSetOverrideImage(t *testing.T) {
 	c := ProjectConfig{}
 	c.SetOverrideImage("python", "docker.io/library/python:3.11-slim")

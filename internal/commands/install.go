@@ -74,16 +74,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		EnsureRuntime: e.EnsureRuntime,
 		PullImage:     e.PullImage,
 		RunCaptured:   captureRunAdapter(e),
-		RunSetup: func(name string, tool config.ToolDefinition, cmd string, arguments []string, target string) (int32, error) {
-			return e.RunSetup(engine.RunSetupOptions{
-				ToolName:     name,
-				Tool:         tool,
-				Command:      cmd,
-				Arguments:    arguments,
-				TargetRootfs: target,
-				Global:       true,
-			})
-		},
+		RunSetup: bakeAdapter(e),
 	}
 
 	_, wasInstalled := cfg.Tools[toolName]
@@ -103,6 +94,22 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("%s %q.\n", verb, toolName)
 	return nil
+}
+
+// bakeAdapter adapts engine.ContainerEngine.RunSetup to tools.BakeFunc. The
+// adapter is shared between `silo install` (global bakes of registry postInstall)
+// and `silo sync` (project-scoped bakes for .siloconf postInstall overrides).
+func bakeAdapter(e *engine.ContainerEngine) tools.BakeFunc {
+	return func(name string, tool config.ToolDefinition, cmd string, arguments []string, target string, global bool) (int32, error) {
+		return e.RunSetup(engine.RunSetupOptions{
+			ToolName:     name,
+			Tool:         tool,
+			Command:      cmd,
+			Arguments:    arguments,
+			TargetRootfs: target,
+			Global:       global,
+		})
+	}
 }
 
 // captureRunAdapter adapts engine.ContainerEngine.RunEphemeral to tools.CaptureRunFunc.

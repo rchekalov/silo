@@ -23,11 +23,22 @@ type MountConfig struct {
 }
 
 // ToolOverride captures per-project tweaks to a tool definition.
+//
+// PostInstall extends the registry's postInstall with project-specific bake
+// steps (e.g. installing JDK + Kotlin into claude-code for a JVM project).
+// Steps from the override are appended to the registry's list, so the base
+// image layout stays intact. Presence of extra steps triggers `silo sync`
+// to produce a project-scoped rootfs at <projectRoot>/.silo/<tool>/rootfs.ext4.
+//
+// Cache lets a project add persistent host<->guest mounts on top of the
+// registry's. Deduplication is by Guest path (override wins on conflict).
 type ToolOverride struct {
-	Image   string            `yaml:"image,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty"`
-	Network *NetworkConfig    `yaml:"network,omitempty"`
-	Ports   []PortMapping     `yaml:"ports,omitempty"`
+	Image       string            `yaml:"image,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
+	Network     *NetworkConfig    `yaml:"network,omitempty"`
+	Ports       []PortMapping     `yaml:"ports,omitempty"`
+	PostInstall []string          `yaml:"postInstall,omitempty"`
+	Cache       []CacheMount      `yaml:"cache,omitempty"`
 }
 
 // ProjectConfig is .siloconf at the project root (or ~/.silo/siloconf, globally).
@@ -222,6 +233,14 @@ func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
 		if override.Ports != nil {
 			existing.Ports = append([]PortMapping(nil), override.Ports...)
 		}
+		if len(override.PostInstall) > 0 {
+			// Both sides are project-level overrides — base may come from the
+			// global siloconf. Append so shared global setup steps run first.
+			existing.PostInstall = append(append([]string(nil), existing.PostInstall...), override.PostInstall...)
+		}
+		if len(override.Cache) > 0 {
+			existing.Cache = mergeCacheMounts(existing.Cache, override.Cache)
+		}
 		merged[tool] = existing
 	}
 	if len(merged) > 0 {
@@ -413,7 +432,13 @@ func (c *ProjectConfig) cleanupEmpty() {
 				o.Network = nil
 			}
 		}
-		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 {
+		if len(o.PostInstall) == 0 {
+			o.PostInstall = nil
+		}
+		if len(o.Cache) == 0 {
+			o.Cache = nil
+		}
+		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 && len(o.PostInstall) == 0 && len(o.Cache) == 0 {
 			delete(c.Overrides, tool)
 			continue
 		}
@@ -440,6 +465,30 @@ func filterOut(s []string, v string) ([]string, bool) {
 	}
 	// Reallocate a fresh slice so the backing array isn't shared.
 	return append([]string(nil), out...), true
+}
+
+// mergeCacheMounts returns base+overlay, deduplicated by Guest path.
+// Overlay wins on conflict. Order: base first, then overlay entries that
+// weren't already in base.
+func mergeCacheMounts(base, overlay []CacheMount) []CacheMount {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	index := make(map[string]int, len(base)+len(overlay))
+	out := make([]CacheMount, 0, len(base)+len(overlay))
+	for _, m := range base {
+		index[m.Guest] = len(out)
+		out = append(out, m)
+	}
+	for _, m := range overlay {
+		if idx, ok := index[m.Guest]; ok {
+			out[idx] = m
+			continue
+		}
+		index[m.Guest] = len(out)
+		out = append(out, m)
+	}
+	return out
 }
 
 // dedupMerge returns base || overlay, order-preserving. nil on empty.

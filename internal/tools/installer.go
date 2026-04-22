@@ -15,6 +15,12 @@ import (
 	"github.com/rchekalov/silo/internal/shim"
 )
 
+// BakeFunc runs a setup command in a writable VM seeded from the tool's image
+// (or the global build rootfs when Global is false and one exists) and
+// snapshots the result at `target` on exit 0. It's the single hook shared by
+// install-time postInstall and project-scoped `silo sync` bakes.
+type BakeFunc func(toolName string, tool config.ToolDefinition, command string, args []string, target string, global bool) (int32, error)
+
 // Installer orchestrates adding and removing tools. It consolidates what used
 // to live inline in commands/install.go so the same flow is reachable from
 // scripted paths (e.g., `silo init --install-detected`, future batch ops).
@@ -35,7 +41,7 @@ type Installer struct {
 	// RunSetup runs a setup command in a writable VM and persists the rootfs
 	// at `target`. Used to bake registry-level `postInstall:` scripts during
 	// install. If nil, postInstall scripts are skipped with a warning.
-	RunSetup func(toolName string, tool config.ToolDefinition, command string, args []string, target string) (int32, error)
+	RunSetup BakeFunc
 }
 
 // ReservedNames cannot be used as tool names — they clash with subcommands.
@@ -215,17 +221,34 @@ func (in *Installer) autoDiscoverShims(def *config.ToolDefinition, name string) 
 	return nil
 }
 
-// runPostInstall bakes the tool's registry-level postInstall script into a
-// persistent global rootfs. The original proxy allowlist (if any) is dropped
-// for the build step so apt-get / npm install / etc. reach their upstreams
-// regardless of what the tool is permitted to touch at runtime.
-func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) error {
-	if len(def.PostInstall) == 0 {
-		return nil
+// BakeOptions parameterizes BakeTool.
+type BakeOptions struct {
+	Name        string
+	Def         config.ToolDefinition
+	Steps       []string // shell fragments joined with " && " + `sync`
+	Target      string   // rootfs.ext4 path to persist to
+	Scope       string   // "global" or "project"
+	ProjectRoot string   // required when Scope == "project"
+}
+
+// BakeTool runs opts.Steps in a writable VM and snapshots the resulting
+// rootfs into opts.Target on exit 0. The tool's network is broadened for the
+// build (proxy allowlist dropped, HostAccess kept) so apt-get / npm install
+// reach their upstreams regardless of runtime restrictions. The caller's
+// original def is not mutated — the returned ToolDefinition has
+// BuildRootfs / BuildScript / BuildScope / BuildProjectRoot populated.
+//
+// run must be non-nil. If opts.Steps is empty the function is a no-op and
+// returns opts.Def unchanged.
+func BakeTool(run BakeFunc, opts BakeOptions) (config.ToolDefinition, error) {
+	if len(opts.Steps) == 0 {
+		return opts.Def, nil
 	}
-	if in.RunSetup == nil {
-		fmt.Fprintf(os.Stderr, "warning: %s has postInstall steps but no RunSetup hook; skipping\n", name)
-		return nil
+	if run == nil {
+		return opts.Def, fmt.Errorf("bake: no RunSetup hook available")
+	}
+	if opts.Scope == "project" && opts.ProjectRoot == "" {
+		return opts.Def, fmt.Errorf("bake: project scope requires ProjectRoot")
 	}
 
 	// Append `sync` so the guest flushes its page cache to the backing ext4
@@ -233,15 +256,12 @@ func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) err
 	// rootfs while the VM is still running, and the tail end of a fast write
 	// burst (e.g. `npm install -g` that finishes in ~12s) never reaches disk
 	// — the installed package is silently lost from the baked rootfs.
-	script := strings.Join(def.PostInstall, " && ") + " && sync"
-	target := runtime.GlobalBuildRootfs(name)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("postInstall: prepare build dir: %v", err)
+	script := strings.Join(opts.Steps, " && ") + " && sync"
+	if err := os.MkdirAll(filepath.Dir(opts.Target), 0o755); err != nil {
+		return opts.Def, fmt.Errorf("bake: prepare build dir: %v", err)
 	}
 
-	// Broaden network for the build step: keep HostAccess, drop the proxy
-	// allowlist. The original def (with proxy) is what we persist for runtime.
-	buildDef := *def
+	buildDef := opts.Def
 	if buildDef.Network != nil {
 		n := *buildDef.Network
 		n.Proxy = nil
@@ -250,18 +270,50 @@ func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) err
 		buildDef.Network = &config.NetworkConfig{HostAccess: true}
 	}
 
+	global := opts.Scope == "global"
+	exit, err := run(opts.Name, buildDef, "sh", []string{"-c", script}, opts.Target, global)
+	if err != nil {
+		return opts.Def, fmt.Errorf("bake: %v", err)
+	}
+	if exit != 0 {
+		return opts.Def, fmt.Errorf("bake: setup exited %d", exit)
+	}
+
+	out := opts.Def
+	out.BuildRootfs = opts.Target
+	out.BuildScript = "sh -c " + script
+	out.BuildScope = opts.Scope
+	if opts.Scope == "project" {
+		out.BuildProjectRoot = opts.ProjectRoot
+	} else {
+		out.BuildProjectRoot = ""
+	}
+	return out, nil
+}
+
+// runPostInstall bakes the tool's registry-level postInstall script into a
+// persistent global rootfs. Thin wrapper over BakeTool kept for clarity at
+// the install callsite.
+func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) error {
+	if len(def.PostInstall) == 0 {
+		return nil
+	}
+	if in.RunSetup == nil {
+		fmt.Fprintf(os.Stderr, "warning: %s has postInstall steps but no RunSetup hook; skipping\n", name)
+		return nil
+	}
 	fmt.Fprintf(os.Stderr, "Running postInstall for %s...\n", name)
-	exit, err := in.RunSetup(name, buildDef, "sh", []string{"-c", script}, target)
+	updated, err := BakeTool(in.RunSetup, BakeOptions{
+		Name:   name,
+		Def:    *def,
+		Steps:  def.PostInstall,
+		Target: runtime.GlobalBuildRootfs(name),
+		Scope:  "global",
+	})
 	if err != nil {
 		return fmt.Errorf("postInstall: %v", err)
 	}
-	if exit != 0 {
-		return fmt.Errorf("postInstall exited %d", exit)
-	}
-
-	def.BuildRootfs = target
-	def.BuildScript = "sh -c " + script
-	def.BuildScope = "global"
+	*def = updated
 	return nil
 }
 
@@ -274,5 +326,4 @@ func warnIfShimBinNotOnPATH() {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "Hint: add %s to your PATH to use shims directly.\n", shimBin)
-	_ = strings.TrimSpace // keep strings imported for future expansion
 }

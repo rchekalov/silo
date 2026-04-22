@@ -1,0 +1,23 @@
+addons:
+  kotlin:
+    label: "Kotlin + OpenJDK 17"
+    # Kotlin isn't in Debian bookworm apt, so install via SDKMAN after pulling
+    # in the JDK. The symlinks at the end put kotlin/kotlinc on PATH for
+    # non-login shells (claude-code spawns /bin/sh -c, which doesn't source
+    # ~/.sdkman/bin/sdkman-init.sh).
+    steps:
+      - apt-get update && apt-get install -y --no-install-recommends curl zip unzip openjdk-17-jdk-headless && rm -rf /var/lib/apt/lists/*
+      - curl -fsSL https://get.sdkman.io | bash
+      - bash -lc 'source /root/.sdkman/bin/sdkman-init.sh && sdk install kotlin'
+      - ln -sf /root/.sdkman/candidates/kotlin/current/bin/kotlin /usr/local/bin/kotlin && ln -sf /root/.sdkman/candidates/kotlin/current/bin/kotlinc /usr/local/bin/kotlinc
+
+  java:
+    label: "OpenJDK 17 + Maven"
+    steps:
+      - apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless maven && rm -rf /var/lib/apt/lists/*
+
+  ruby:
+    label: "Ruby + Bundler"
+    steps:
+      - apt-get update && apt-get install -y --no-install-recommends ruby-full && rm -rf /var/lib/apt/lists/*
+      - gem install bundler --no-document

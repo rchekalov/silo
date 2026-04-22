@@ -57,10 +57,16 @@ var initCmd = &cobra.Command{
 			}
 		}
 
-		c := &config.ProjectConfig{}
+		c := &config.ProjectConfig{Tools: selected}
 		if excludes := tools.CollectExcludes(selected); len(excludes) > 0 {
 			c.Mount = &config.MountConfig{Exclude: excludes}
 		}
+
+		// Language-level addons (Kotlin, Java, Ruby): not first-class tools, so
+		// they don't belong in `tools:`. Instead, suggest baking them into an
+		// installed host tool (claude-code) via overrides.<tool>.postInstall.
+		addonNotes := maybeAddLanguageAddons(c, cwd, initNoInteractive)
+
 		if err := c.Save(cwd); err != nil {
 			return err
 		}
@@ -70,8 +76,88 @@ var initCmd = &cobra.Command{
 		if len(selected) > 0 {
 			fmt.Printf("Detected tools: %s\n", strings.Join(selected, ", "))
 		}
+		for _, note := range addonNotes {
+			fmt.Println(note)
+		}
 		return nil
 	},
+}
+
+// maybeAddLanguageAddons detects language-only markers (Kotlin, Java, Ruby)
+// that don't map to a first-class silo tool, and — if claude-code is
+// installed — records the corresponding postInstall step under
+// overrides.claude-code. Returns human-readable notes to print after save.
+// Silent when there are no addons, claude-code is not installed, or the
+// user declines interactively.
+func maybeAddLanguageAddons(c *config.ProjectConfig, cwd string, noInteractive bool) []string {
+	addons := tools.DetectAddons(cwd)
+	if len(addons) == 0 {
+		return nil
+	}
+	global, err := config.LoadGlobalConfig()
+	if err != nil || global == nil {
+		return nil
+	}
+	hostTool := "claude-code"
+	if _, ok := global.Tools[hostTool]; !ok {
+		// Claude-code isn't installed, so there's no host rootfs to extend.
+		// Print a hint instead of silently skipping.
+		notes := make([]string, 0, len(addons))
+		for _, a := range addons {
+			if addon, known := tools.LookupLanguageAddon(a.Name); known {
+				notes = append(notes, fmt.Sprintf(
+					"Detected %s project (%s). Install %s and run `silo add %s` to bake it in.",
+					addon.Label, strings.Join(a.Markers, ", "), hostTool, a.Name,
+				))
+			}
+		}
+		return notes
+	}
+
+	var notes []string
+	for _, a := range addons {
+		addon, known := tools.LookupLanguageAddon(a.Name)
+		if !known {
+			continue
+		}
+		langSteps := addon.PostInstallSteps()
+		if len(langSteps) == 0 {
+			continue
+		}
+		include := false
+		if noInteractive {
+			include = true
+		} else {
+			question := fmt.Sprintf("Detected %s (%s). Add %s to %s for this project?",
+				addon.Label, strings.Join(a.Markers, ", "), addon.Label, hostTool)
+			if ok, _ := Prompter.AskYesNo(question, true); ok {
+				include = true
+			}
+		}
+		if !include {
+			continue
+		}
+		if c.Overrides == nil {
+			c.Overrides = map[string]config.ToolOverride{}
+		}
+		o := c.Overrides[hostTool]
+		// Dedup — init should be rerunnable against a partial config in future.
+		seen := map[string]struct{}{}
+		for _, existing := range o.PostInstall {
+			seen[existing] = struct{}{}
+		}
+		for _, step := range langSteps {
+			if _, ok := seen[step]; ok {
+				continue
+			}
+			o.PostInstall = append(o.PostInstall, step)
+			seen[step] = struct{}{}
+		}
+		c.Overrides[hostTool] = o
+		notes = append(notes, fmt.Sprintf("Added %s to overrides.%s.postInstall. Run `silo sync` to bake.",
+			addon.Label, hostTool))
+	}
+	return notes
 }
 
 // appendToGitignore adds a line to .gitignore if the file exists and the entry isn't already present.

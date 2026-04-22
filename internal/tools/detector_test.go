@@ -58,6 +58,39 @@ func TestCollectExcludesDedup(t *testing.T) {
 	}
 }
 
+func TestDetectAddonsKotlin(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "build.gradle.kts"))
+	got := DetectAddons(dir)
+	if len(got) != 1 || got[0].Name != "kotlin" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestDetectAddonsJavaPom(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "pom.xml"))
+	got := DetectAddons(dir)
+	if len(got) != 1 || got[0].Name != "java" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestDetectAddonsDoesNotMatchFirstClass(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "package.json"))
+	touch(t, filepath.Join(dir, "requirements.txt"))
+	if got := DetectAddons(dir); len(got) != 0 {
+		t.Fatalf("expected no addons, got %+v", got)
+	}
+}
+
+func TestDetectAddonsNone(t *testing.T) {
+	if got := DetectAddons(t.TempDir()); got != nil {
+		t.Fatalf("expected nil, got %+v", got)
+	}
+}
+
 func touch(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
