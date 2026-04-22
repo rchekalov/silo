@@ -36,6 +36,7 @@ type RegistryEntry struct {
 	Cache        []config.CacheMount   `yaml:"cache,omitempty"`
 	Workdir      string                `yaml:"workdir,omitempty"`
 	Env          map[string]string     `yaml:"env,omitempty"`
+	PassEnv      []string              `yaml:"passEnv,omitempty"`
 	CPUs         *int32                `yaml:"cpus,omitempty"`
 	MemoryMB     *uint64               `yaml:"memoryMB,omitempty"`
 	RootfsSizeMB *uint64               `yaml:"rootfsSizeMB,omitempty"`
@@ -62,6 +63,7 @@ func (e RegistryEntry) ToToolDefinition(version string) config.ToolDefinition {
 		Cache:       append([]config.CacheMount(nil), e.Cache...),
 		Workdir:     e.Workdir,
 		Env:         cloneStringMap(e.Env),
+		PassEnv:     append([]string(nil), e.PassEnv...),
 		Network:     cloneNetwork(e.Network),
 		Requires:    append([]string(nil), e.Requires...),
 		Ports:       append([]config.PortMapping(nil), e.Ports...),

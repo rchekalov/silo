@@ -94,6 +94,12 @@ type ToolDefinition struct {
 	Cache        []CacheMount      `yaml:"cache,omitempty"`
 	Workdir      string            `yaml:"workdir,omitempty"`
 	Env          map[string]string `yaml:"env,omitempty"`
+	// PassEnv lists host env var names copied into the guest when set. Used by
+	// registry entries to declare the credential env their tool expects (e.g.
+	// claude-code → ANTHROPIC_API_KEY) so the tool works out of the box without
+	// the user wiring passEnv in every project's .siloconf. Merged with the
+	// project-level passEnv at runtime.
+	PassEnv      []string          `yaml:"passEnv,omitempty"`
 	CPUs         int32             `yaml:"cpus,omitempty"`
 	MemoryMB     uint64            `yaml:"memoryMB,omitempty"`
 	RootfsSizeMB uint64            `yaml:"rootfsSizeMB,omitempty"`

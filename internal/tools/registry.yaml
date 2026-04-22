@@ -208,6 +208,15 @@ tools:
     postInstall:
       - apt-get update && apt-get install -y --no-install-recommends python3 python3-pip git curl openssh-client ca-certificates build-essential jq ripgrep && rm -rf /var/lib/apt/lists/*
       - npm install -g @anthropic-ai/claude-code
+    # Credentials / login-skip env the user may have set on the host. Claude
+    # Code falls back to its interactive login flow if none of these are set,
+    # so it's safe to list them all unconditionally.
+    passEnv:
+      - ANTHROPIC_API_KEY
+      - ANTHROPIC_AUTH_TOKEN
+      - ANTHROPIC_BASE_URL
+      - CLAUDE_CODE_USE_BEDROCK
+      - CLAUDE_CODE_USE_VERTEX
     cache:
       - guest: /root/.claude
         host: ~/.silo/cache/claude-code/config
@@ -219,19 +228,4 @@ tools:
     rootfsSizeMB: 4096
     network:
       hostAccess: true
-      proxy:
-        allow:
-          - api.anthropic.com
-          - statsig.anthropic.com
-          - sentry.io
-          - "*.github.com"
-          - "*.githubusercontent.com"
-          - registry.npmjs.org
-          - pypi.org
-          - files.pythonhosted.org
-          - crates.io
-          - "*.crates.io"
-          - proxy.golang.org
-        deny:
-          - "*"
 

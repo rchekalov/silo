@@ -228,7 +228,12 @@ func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) err
 		return nil
 	}
 
-	script := strings.Join(def.PostInstall, " && ")
+	// Append `sync` so the guest flushes its page cache to the backing ext4
+	// block device before `sh -c` exits. Without it, RunSetup snapshots the
+	// rootfs while the VM is still running, and the tail end of a fast write
+	// burst (e.g. `npm install -g` that finishes in ~12s) never reaches disk
+	// — the installed package is silently lost from the baked rootfs.
+	script := strings.Join(def.PostInstall, " && ") + " && sync"
 	target := runtime.GlobalBuildRootfs(name)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return fmt.Errorf("postInstall: prepare build dir: %v", err)

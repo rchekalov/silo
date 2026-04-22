@@ -56,6 +56,11 @@ func (r *ephemeralRunner) RunLSP(opts RunLSPOptions) (int32, error) {
 	for k, v := range opts.Tool.Env {
 		env[k] = v
 	}
+	for _, k := range opts.Tool.PassEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env[k] = v
+		}
+	}
 	env["TERM"] = "dumb"
 	for k, v := range lspCfg.Env {
 		env[k] = v

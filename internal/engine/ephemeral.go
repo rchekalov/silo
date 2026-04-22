@@ -624,6 +624,11 @@ func buildEnv(tool config.ToolDefinition, toolName string, pc *config.ProjectCon
 	for k, v := range tool.Env {
 		env[k] = v
 	}
+	for _, key := range tool.PassEnv {
+		if v, ok := os.LookupEnv(key); ok {
+			env[key] = v
+		}
+	}
 	if _, ok := env["TERM"]; !ok {
 		if host := os.Getenv("TERM"); host != "" {
 			env["TERM"] = host
