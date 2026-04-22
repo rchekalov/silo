@@ -26,11 +26,11 @@ fi
 
 echo "PASS: host env vars do not leak"
 
-echo "Testing: pass_env forwards specified variables"
+echo "Testing: passEnv forwards specified variables"
 
 rm -f "$WORKDIR/.output"
 cat > "$WORKDIR/.siloconf" <<'EOF'
-pass_env:
+passEnv:
   - SILO_TEST_SECRET
 EOF
 
@@ -43,8 +43,8 @@ with open('/workspace/.output', 'w') as f:
 
 OUTPUT=$(cat "$WORKDIR/.output" 2>/dev/null || echo "")
 if [ "$OUTPUT" != "should-not-leak-12345" ]; then
-  echo "FAIL: pass_env did not forward SILO_TEST_SECRET (got: $OUTPUT)"
+  echo "FAIL: passEnv did not forward SILO_TEST_SECRET (got: $OUTPUT)"
   exit 1
 fi
 
-echo "PASS: pass_env correctly forwards specified variables"
+echo "PASS: passEnv correctly forwards specified variables"

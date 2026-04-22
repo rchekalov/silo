@@ -15,9 +15,9 @@ import (
 )
 
 // HTTPProxy is a forward HTTP/HTTPS proxy with a domain allowlist. It listens
-// on 127.0.0.1 on a dynamic port and forwards connections whose Host/target
-// domain matches the allowlist; everything else returns 403 (HTTP) or
-// connection close (CONNECT/HTTPS).
+// on all interfaces on a dynamic port and forwards connections whose
+// Host/target domain matches the allowlist; everything else returns 403 (HTTP)
+// or connection close (CONNECT/HTTPS).
 //
 // Port of Sources/SiloCore/Network/NetworkProxy.swift from the main branch.
 type HTTPProxy struct {
@@ -28,10 +28,15 @@ type HTTPProxy struct {
 	wg       sync.WaitGroup
 }
 
-// StartHTTPProxy binds 127.0.0.1:0, records the chosen port, and starts the
+// StartHTTPProxy binds 0.0.0.0:0, records the chosen port, and starts the
 // accept loop. Returns immediately.
 func StartHTTPProxy(rule config.ProxyConfig) (*HTTPProxy, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	// Bind on all interfaces so the guest can dial host.silo.internal
+	// (the VMNet host-facing IP) — loopback is not bridged into the VM.
+	// This exposes the proxy to the host's LAN, but it's allowlist-gated:
+	// an unauthenticated LAN client can only reach the same destinations
+	// the project already opted into, not arbitrary internet.
+	l, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		return nil, fmt.Errorf("network proxy: listen: %w", err)
 	}

@@ -11,7 +11,7 @@ cat > "$WORKDIR/.siloconf" <<'EOF'
 overrides:
   python:
     network:
-      host_access: true
+      hostAccess: true
 EOF
 
 echo "Testing: host.silo.internal resolves when hostAccess is enabled"

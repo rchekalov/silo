@@ -138,6 +138,8 @@ The build has two stages: Swift bridge first, then Go binary (linked against the
 | `make test-vm` | Run end-to-end VM integration tests (`tests/integration/run-all.sh`) |
 | `make clean` | Clean bin/, swift-bridge build, go cache |
 
+**Always run `make test-vm` locally when verifying a change that touches runtime behaviour** (engine, network, config parsing, cache, LSP, tool registry). CI skips it — `.github/workflows/ci.yml` only runs `make test` (Go unit tests) + `make sign-debug`. Regressions in the integration suite therefore stay silent until someone manually reruns it. Pair with `make sign-debug` first so the binary under `bin/silo` reflects the current change.
+
 **Dependencies:**
 - Go toolchain (≥ 1.25; cgo required)
 - Swift 6.2+ (for building the bridge dylib only)
