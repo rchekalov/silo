@@ -427,6 +427,9 @@ func buildToolCacheSpecs(global *config.GlobalConfig, pol config.ToolCachePolicy
 	var out []cache.MountSpec
 	for name, def := range global.Tools {
 		for _, cm := range def.Cache {
+			if cm.NoGC {
+				continue
+			}
 			host := cm.Host
 			if strings.HasPrefix(host, "~") {
 				host = filepath.Join(home, strings.TrimPrefix(host, "~"))

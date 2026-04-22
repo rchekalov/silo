@@ -383,7 +383,7 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 |---|---|---|---|
 | `image` | string | -- | OCI image reference |
 | `shims` | []ShimMapping | nil | Entries in ~/.silo/bin/ |
-| `cache` | []CacheMount | nil | Persistent host<->guest mounts |
+| `cache` | []CacheMount | nil | Persistent host<->guest mounts. Each entry: `guest`, `host`, optional `sizeHint`, optional `noGC: true` to exempt from `silo cache gc --tool-caches` (for durable state like OAuth credentials, not regenerable cache). |
 | `workdir` | string | /workspace | Container working directory |
 | `env` | map[string]string | nil | Default env vars |
 | `passEnv` | []string | nil | Host env vars copied into the guest when set (e.g. `ANTHROPIC_API_KEY` for claude-code). Merged with the project-level `passEnv` at runtime. |

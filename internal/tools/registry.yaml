@@ -218,19 +218,22 @@ tools:
       - CLAUDE_CODE_USE_BEDROCK
       - CLAUDE_CODE_USE_VERTEX
     cache:
+      # Holds OAuth credentials (.credentials.json) and CLI config
+      # (.claude.json, relocated here via CLAUDE_CONFIG_DIR below). Marked
+      # noGC because losing these to age-based eviction silently re-prompts
+      # the user for login.
       - guest: /root/.claude
         host: ~/.silo/cache/claude-code/config
+        noGC: true
       - guest: /root/.npm
         host: ~/.silo/cache/node/npm
     workdir: /workspace
     env:
-      # Keep Claude Code's top-level config (.claude.json) inside the mounted
-      # cache directory so it persists across ephemeral VM boots. Without this,
-      # the config lands at /root/.claude.json (outside the mount) and Claude
-      # treats every run as first-run — showing the login prompt even when a
-      # valid .credentials.json is already in place. CLAUDE_CONFIG_DIR controls
-      # CLI config path; ANTHROPIC_CONFIG_DIR is the API-client equivalent.
-      # Setting both so neither layer writes outside the persisted mount.
+      # Relocate Claude Code's top-level config into the mounted dir so it
+      # persists across ephemeral VM boots. Without this, the file lands at
+      # /root/.claude.json (outside the mount) and Claude treats every run
+      # as first-run — re-prompting for login even when .credentials.json
+      # is already in place.
       CLAUDE_CONFIG_DIR: /root/.claude
       ANTHROPIC_CONFIG_DIR: /root/.claude
     cpus: 4

@@ -73,10 +73,16 @@ func (s *ShimMapping) UnmarshalYAML(node *yaml.Node) error {
 
 // CacheMount is a persistent host<->guest path binding. Sized hints are purely
 // informational (shown in `silo list`).
+//
+// NoGC opts the mount out of `silo cache gc --tool-caches`. Use it for mounts
+// that hold durable state (OAuth credentials, user config) rather than
+// regenerable cache — the age-based pass would silently delete those files
+// after MaxAge, forcing the user to re-authenticate with no obvious cause.
 type CacheMount struct {
 	Guest    string `yaml:"guest"`
 	Host     string `yaml:"host"`
 	SizeHint string `yaml:"sizeHint,omitempty"`
+	NoGC     bool   `yaml:"noGC,omitempty"`
 }
 
 // LspConfig describes an optional language-server installation/run recipe.
