@@ -172,7 +172,7 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
         with:
-          repository: rchekalov/homebrew-silo
+          repository: rchekalov/homebrew-apps
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
           path: tap
 

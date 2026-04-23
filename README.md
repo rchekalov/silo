@@ -37,14 +37,14 @@ Silo fixes both by running tools in a micro-VM that only sees the project direct
 ## Install
 
 ```bash
-brew install rchekalov/silo/silo
+brew install rchekalov/apps/silo
 
 # Add silo shims to your PATH (run once for current shell + append to profile)
 eval "$(silo shellenv)"
 echo 'eval "$(silo shellenv)"' >> ~/.zshrc
 ```
 
-The three-part `rchekalov/silo/silo` is required because homebrew-cask already has an unrelated `silo` cask — the fully-qualified form picks our formula.
+The three-part `rchekalov/apps/silo` is required because homebrew-cask already has an unrelated `silo` cask — the fully-qualified form picks our formula.
 
 Homebrew compiles silo from source on your machine (~1–2 min) and ad-hoc codesigns the binary with the virtualization entitlement it needs to boot VMs. No notarization, no Gatekeeper quarantine prompts.
 

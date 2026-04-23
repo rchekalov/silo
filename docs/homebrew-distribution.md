@@ -3,10 +3,10 @@
 ## How it works for the user
 
 ```bash
-brew install rchekalov/silo/silo
+brew install rchekalov/apps/silo
 ```
 
-The fully-qualified name is required because homebrew-cask already has a `silo` cask (an unrelated macOS app). Using just `brew install silo` resolves to that cask. The three-part form `rchekalov/silo/silo` (user/tap/formula) forces Homebrew to pick our formula.
+The fully-qualified name is required because homebrew-cask already has a `silo` cask (an unrelated macOS app). Using just `brew install silo` resolves to that cask. The three-part form `rchekalov/apps/silo` (user/tap/formula) forces Homebrew to pick our formula.
 
 Homebrew downloads a prebuilt tarball attached to the tagged GitHub Release, extracts the signed `silo` binary and `libSiloBridge.dylib` into the Homebrew prefix, and is done. No Swift or Go toolchain is pulled in — the tarball is ad-hoc codesigned with the virtualization entitlement at build time on CI's `macos-latest` runner, and ad-hoc signatures survive tar/untar.
 
@@ -19,9 +19,9 @@ Source-build via `git clone && make install` still works for auditors who want t
 ### Two repositories
 
 - **`rchekalov/silo`** — main source repo. Tag pushes trigger `release.yml`.
-- **`rchekalov/homebrew-silo`** — the tap repo. Just a `Formula/silo.rb` file.
+- **`rchekalov/homebrew-apps`** — the tap repo. Just a `Formula/silo.rb` file.
 
-The tap repo's `homebrew-` prefix is required by Homebrew convention — it lets users run `brew tap rchekalov/silo` instead of `brew tap rchekalov/homebrew-silo`.
+The tap repo's `homebrew-` prefix is required by Homebrew convention — it lets users run `brew tap rchekalov/apps` instead of `brew tap rchekalov/homebrew-apps`.
 
 ### Prebuilt-binary formula
 
@@ -60,12 +60,12 @@ After the workflow finishes, users running `brew update && brew upgrade` pull th
 
 The steps to bootstrap this pipeline from scratch:
 
-1. Create the `rchekalov/homebrew-silo` repo on GitHub (empty, public).
+1. Create the `rchekalov/homebrew-apps` repo on GitHub (empty, public).
 2. Copy `scripts/homebrew/silo.rb` from this repo into the tap repo at `Formula/silo.rb`, and push.
 3. Generate a fine-grained GitHub token with `contents: write` scope on the tap repo. Store it as `TAP_GITHUB_TOKEN` on this repo under **Settings → Secrets and variables → Actions**.
 4. Push a tag: `git tag v0.4.0 && git push origin v0.4.0`.
 5. Watch `.github/workflows/release.yml` run. When it finishes, verify the tap repo's `Formula/silo.rb` has the correct version / url / sha256.
-6. On a clean macOS 26 machine: `brew install rchekalov/silo/silo && silo --version`.
+6. On a clean macOS 26 machine: `brew install rchekalov/apps/silo && silo --version`.
 
 ## Caveats for `silo setup`
 

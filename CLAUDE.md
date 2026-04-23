@@ -160,7 +160,7 @@ The build has two stages: Swift bridge first, then Go binary (linked against the
 
 **Release & distribution:**
 - `.github/workflows/ci.yml` — PR + push CI: `make bridge && make test && make sign-debug` on `macos-latest` (arm64). Uploads the signed debug binary as an artifact.
-- `.github/workflows/release.yml` — on tag `v*`: builds + codesigns a prebuilt tarball (`silo-<version>-macos-arm64.tar.gz`) via `make release-bundle` + `make release-tarball`, attaches it (plus the runtime bundle) to a GitHub Release, and bumps `Formula/silo.rb` in `rchekalov/homebrew-silo` to point at the new release-asset URL + sidecar sha256. Requires `TAP_GITHUB_TOKEN`.
+- `.github/workflows/release.yml` — on tag `v*`: builds + codesigns a prebuilt tarball (`silo-<version>-macos-arm64.tar.gz`) via `make release-bundle` + `make release-tarball`, attaches it (plus the runtime bundle) to a GitHub Release, and bumps `Formula/silo.rb` in `rchekalov/homebrew-apps` to point at the new release-asset URL + sidecar sha256. Requires `TAP_GITHUB_TOKEN`.
 - `scripts/homebrew/silo.rb` — seed formula for the tap repo. Homebrew downloads the prebuilt tarball from the GitHub Release and extracts it; no Swift/Go build deps. Source-build via `git clone && make install` still works for auditors.
 - `docs/homebrew-distribution.md` — end-to-end setup steps (create tap repo, add secret, tag, validate).
 
