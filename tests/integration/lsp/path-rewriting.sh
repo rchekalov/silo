@@ -6,8 +6,8 @@ set -euo pipefail
 
 SILO_BIN="${SILO_BIN:-silo}"
 
-# Ensure python is installed
-if ! "$SILO_BIN" list 2>/dev/null | grep -qw python; then
+# Ensure python is installed (awk+grep -qx matches run-all.sh's tool-listing idiom)
+if ! "$SILO_BIN" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx python; then
     echo "Installing python..."
     "$SILO_BIN" install python
 fi

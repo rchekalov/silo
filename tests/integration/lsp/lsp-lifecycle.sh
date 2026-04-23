@@ -6,8 +6,8 @@ set -euo pipefail
 SILO_BIN="${SILO_BIN:-silo}"
 TIMEOUT=120
 
-# Ensure python is installed
-if ! "$SILO_BIN" list 2>/dev/null | grep -qw python; then
+# Ensure python is installed (awk+grep -qx matches run-all.sh's tool-listing idiom)
+if ! "$SILO_BIN" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx python; then
     echo "Installing python..."
     "$SILO_BIN" install python
 fi
@@ -63,11 +63,6 @@ read_lsp_response() {
 }
 
 echo "Starting silo lsp python..."
-
-# Start LSP server with pipes
-exec 3>&1  # save original stdout
-exec 4<> >(cd "$WORKDIR" && "$SILO_BIN" lsp python 2>/dev/null)
-LSP_PID=$!
 
 # Create named pipes for communication
 LSP_IN="$WORKDIR/.lsp_in"
