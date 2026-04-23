@@ -1,0 +1,99 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # Defaults (golangci-lint v2 enables these out of the box)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Strict opt-ins — high-signal, low-noise
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - prealloc
+    - revive
+    - thelper
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        # paramTypeCombine and unnamedResult are stylistic-only, high churn
+        - paramTypeCombine
+        - unnamedResult
+        # hugeParam is nice in theory, noisy in practice on config structs
+        - hugeParam
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # internal/bridge/ is a cgo wrapper — boilerplate trips several linters
+      - path: internal/bridge/
+        linters:
+          - errcheck
+          - gocritic
+          - unused
+      - path: _test\.go
+        linters:
+          - errcheck
+          - bodyclose
+      # cmd/silo/main.go does argv[0] rewriting and intentionally long init
+      - path: cmd/silo/main.go
+        linters:
+          - gocritic
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/rchekalov/silo)
+    gofumpt:
+      extra-rules: true

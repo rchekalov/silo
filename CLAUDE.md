@@ -136,6 +136,12 @@ The build has two stages: Swift bridge first, then Go binary (linked against the
 | `make release-bundle PREFIX=<dir> [VERSION=<tag>]` | Build + sign into `$PREFIX/{bin,lib/silo}` (Homebrew-facing) |
 | `make test` | Run `go test ./...` with `CGO_LDFLAGS` and `DYLD_LIBRARY_PATH` |
 | `make test-vm` | Run end-to-end VM integration tests (`tests/integration/run-all.sh`) |
+| `make tools-install` | Install pinned `golangci-lint` into `./bin/` + `go mod download` |
+| `make lint` | Run `golangci-lint v2` (strict preset; advisory in CI) |
+| `make lint-fix` | Apply safe auto-fixes from enabled linters |
+| `make fmt` | Format in place via `gofumpt`/`gci`/`goimports` (via `golangci-lint fmt`) |
+| `make vulncheck` | Run `govulncheck` (Go CVE scanner) against current `go.sum` |
+| `make security` | Run `gosec` security scanner (advisory — one-time setup: `go get -tool github.com/securego/gosec/v2/cmd/gosec@latest`) |
 | `make clean` | Clean bin/, swift-bridge build, go cache |
 
 **Always run `make test-vm` locally when verifying a change that touches runtime behaviour** (engine, network, config parsing, cache, LSP, tool registry). CI skips it — `.github/workflows/ci.yml` only runs `make test` (Go unit tests) + `make sign-debug`. Regressions in the integration suite therefore stay silent until someone manually reruns it. Pair with `make sign-debug` first so the binary under `bin/silo` reflects the current change.
@@ -426,6 +432,8 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 - **Concurrency:** goroutines + channels. Bridge callbacks land on a C thread, marshalled into Go channels in `internal/bridge/callbacks.go`.
 - **FFI pattern:** cgo callbacks → channel send → synchronous-looking Go API. Handles are `unsafe.Pointer` wrapped in typed structs.
 - **Tests:** `*_test.go` next to the file under test. Integration tests live in `tests/integration/*.sh` and are implementation-agnostic (`$SILO_BIN` driven).
+- **Linting & formatting:** `.golangci.yml` (v2) is the single source of truth — defaults (errcheck/govet/staticcheck/ineffassign/unused) plus revive, gocritic, misspell, unconvert, prealloc, copyloopvar, errorlint, bodyclose, nilerr, thelper. Formatters are gofumpt + gci + goimports. `internal/bridge/` is excluded from several linters because cgo boilerplate trips false positives. Run `make lint-fix && make fmt` before opening a PR. CI runs the lint job advisory-only (`continue-on-error: true`) — flip it to blocking once the baseline is clean.
+- **Pre-commit hook (optional):** `lefthook.yml` runs `golangci-lint --fix --fast-only` on staged `*.go`. Opt in with `brew install lefthook && lefthook install`. Skipped during merge/rebase.
 
 ## Troubleshooting
 

@@ -1,4 +1,5 @@
-.PHONY: build release sign sign-debug install uninstall test test-vm clean bridge bridge-release release-bundle
+.PHONY: build release sign sign-debug install uninstall test test-vm clean bridge bridge-release release-bundle \
+        lint lint-fix fmt vulncheck security tools-install
 
 SWIFT_BRIDGE_DIR = swift-bridge
 BRIDGE_LIB_DEBUG = $(SWIFT_BRIDGE_DIR)/.build/debug/libSiloBridge.dylib
@@ -6,6 +7,14 @@ BRIDGE_LIB_RELEASE = $(SWIFT_BRIDGE_DIR)/.build/release/libSiloBridge.dylib
 BIN_DEBUG = bin/silo
 BIN_RELEASE = bin/silo-release
 ENTITLEMENTS = silo.entitlements
+
+GOLANGCI_VERSION = v2.11.4
+GOLANGCI_BIN = ./bin/golangci-lint
+
+# Env needed for any Go analysis that typechecks internal/bridge (cgo).
+# Mirrors the `test` target — the Swift dylib must exist and be discoverable.
+CGO_LINT_ENV = CGO_LDFLAGS="-L$(abspath $(SWIFT_BRIDGE_DIR)/.build/debug) -lSiloBridge" \
+               DYLD_LIBRARY_PATH=$(abspath $(SWIFT_BRIDGE_DIR)/.build/debug)
 
 # Overridable install paths — Homebrew passes its own PREFIX via release-bundle.
 INSTALL_DIR ?= /usr/local/bin
@@ -94,3 +103,37 @@ clean:
 	rm -rf bin
 	cd $(SWIFT_BRIDGE_DIR) && swift package clean
 	go clean -cache -testcache 2>/dev/null || true
+
+# --- Lint / format / security ---------------------------------------------
+
+# Install golangci-lint at the pinned version. Idempotent — re-downloads only
+# if the binary is missing or its --version doesn't match $(GOLANGCI_VERSION).
+$(GOLANGCI_BIN):
+	@mkdir -p bin
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+	  | sh -s -- -b ./bin $(GOLANGCI_VERSION)
+
+# One-shot developer bootstrap: linter binary + go tool deps (gosec, govulncheck).
+# gosec needs a one-time: `go get -tool github.com/securego/gosec/v2/cmd/gosec@latest`
+tools-install: $(GOLANGCI_BIN)
+	go mod download
+
+# Lint all packages. bridge target runs first so internal/bridge typechecks.
+lint: bridge $(GOLANGCI_BIN)
+	$(CGO_LINT_ENV) $(GOLANGCI_BIN) run ./...
+
+# Apply safe auto-fixes from enabled linters.
+lint-fix: bridge $(GOLANGCI_BIN)
+	$(CGO_LINT_ENV) $(GOLANGCI_BIN) run --fix ./...
+
+# Format in place using the formatters declared in .golangci.yml (gofumpt/gci/goimports).
+fmt: $(GOLANGCI_BIN)
+	$(GOLANGCI_BIN) fmt ./...
+
+# Vulnerability scan against current go.sum + call graph.
+vulncheck: bridge
+	$(CGO_LINT_ENV) go tool govulncheck ./...
+
+# Security scan. Advisory by intent — gosec is noisier than govulncheck.
+security:
+	go tool gosec -quiet -exclude-dir=swift-bridge ./...

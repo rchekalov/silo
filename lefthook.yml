@@ -1,0 +1,10 @@
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: "*.go"
+      run: ./bin/golangci-lint run --fix --fast-only {staged_files}
+      stage_fixed: true
+      skip:
+        - merge
+        - rebase
