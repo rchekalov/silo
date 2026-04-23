@@ -7,7 +7,8 @@
 #      store it as TAP_GITHUB_TOKEN on this (main) repo under:
 #         Settings -> Secrets and variables -> Actions.
 #   4. Tag v0.4.0 (or later) on this repo.
-#      The release workflow will auto-bump version/url/sha256 in Formula/silo.rb.
+#      The release workflow builds + uploads a signed prebuilt tarball as a
+#      GitHub Release asset and auto-bumps version/url/sha256 here.
 #
 # Users install with (the three-part form avoids a name collision with
 # the homebrew-cask `silo` cask, which is an unrelated macOS app):
@@ -16,7 +17,7 @@
 class Silo < Formula
   desc "Run dev tools in isolated Apple Container VMs"
   homepage "https://github.com/rchekalov/silo"
-  url "https://github.com/rchekalov/silo/archive/refs/tags/v0.4.0.tar.gz"
+  url "https://github.com/rchekalov/silo/releases/download/v0.4.0/silo-0.4.0-macos-arm64.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "Apache-2.0"
   version "0.4.0"
@@ -24,13 +25,10 @@ class Silo < Formula
   depends_on :macos
   depends_on arch: :arm64
   depends_on macos: :tahoe # macOS 26
-  depends_on "go" => :build
-  depends_on "swift" => :build
 
   def install
-    system "make", "release-bundle",
-           "PREFIX=#{prefix}",
-           "VERSION=#{version}"
+    bin.install "bin/silo"
+    (lib/"silo").install Dir["lib/silo/*"]
   end
 
   def caveats

@@ -1,4 +1,4 @@
-.PHONY: build release sign sign-debug install uninstall test test-vm clean bridge bridge-release release-bundle \
+.PHONY: build release sign sign-debug install uninstall test test-vm clean bridge bridge-release release-bundle release-tarball \
         lint lint-fix fmt vulncheck security tools-install
 
 SWIFT_BRIDGE_DIR = swift-bridge
@@ -44,11 +44,13 @@ build: bridge
 	CGO_LDFLAGS="-L$(abspath $(SWIFT_BRIDGE_DIR)/.build/debug) -lSiloBridge -Wl,-rpath,$(abspath $(SWIFT_BRIDGE_DIR)/.build/debug)" \
 	go build -o $(BIN_DEBUG) ./cmd/silo
 
-# Release build. rpath targets $(LIB_INSTALL_DIR) so the produced binary
-# resolves the dylib from wherever it's installed. Override LIB_INSTALL_DIR
-# to retarget (e.g., Homebrew passes LIB_INSTALL_DIR=#{libexec}/silo).
+# Release build. rpath is @executable_path-relative so the binary is
+# relocatable: it resolves libSiloBridge.dylib from <prefix>/lib/silo
+# regardless of where <prefix> lives. Works for `make install`
+# (/usr/local/bin + /usr/local/lib/silo) and Homebrew
+# (/opt/homebrew/Cellar/silo/<ver>/bin + .../lib/silo).
 release: bridge-release
-	CGO_LDFLAGS="-L$(abspath $(SWIFT_BRIDGE_DIR)/.build/release) -lSiloBridge -Wl,-rpath,$(LIB_INSTALL_DIR)" \
+	CGO_LDFLAGS="-L$(abspath $(SWIFT_BRIDGE_DIR)/.build/release) -lSiloBridge -Wl,-rpath,@executable_path/../lib/silo" \
 	go build -ldflags="-s -w $(VERSION_LDFLAG)" -o $(BIN_RELEASE) ./cmd/silo
 
 # Codesign debug build
@@ -84,6 +86,23 @@ release-bundle:
 	install $(BRIDGE_LIB_RELEASE) $(PREFIX)/lib/silo/libSiloBridge.dylib
 	codesign --entitlements $(ENTITLEMENTS) --force --sign - $(PREFIX)/bin/silo
 	codesign --entitlements $(ENTITLEMENTS) --force --sign - $(PREFIX)/lib/silo/libSiloBridge.dylib
+
+# CI-facing: package an already-built release-bundle into a tarball
+# suitable for GitHub Release assets. Upstream caller must have run
+# `make release-bundle PREFIX=$PREFIX VERSION=$VERSION` first.
+# Usage:
+#   make release-tarball PREFIX=<dir> VERSION=<tag> OUT_DIR=<dir>
+# Produces:
+#   $(OUT_DIR)/silo-$(VERSION)-macos-arm64.tar.gz
+#   $(OUT_DIR)/silo-$(VERSION)-macos-arm64.tar.gz.sha256
+release-tarball:
+	@if [ -z "$(PREFIX)" ]; then echo "error: PREFIX is required"; exit 2; fi
+	@if [ -z "$(VERSION)" ]; then echo "error: VERSION is required"; exit 2; fi
+	@if [ -z "$(OUT_DIR)" ]; then echo "error: OUT_DIR is required"; exit 2; fi
+	mkdir -p $(OUT_DIR)
+	tar -czf $(OUT_DIR)/silo-$(VERSION)-macos-arm64.tar.gz -C $(PREFIX) bin lib
+	cd $(OUT_DIR) && shasum -a 256 silo-$(VERSION)-macos-arm64.tar.gz \
+	  > silo-$(VERSION)-macos-arm64.tar.gz.sha256
 
 uninstall:
 	sudo rm -f $(INSTALL_DIR)/silo

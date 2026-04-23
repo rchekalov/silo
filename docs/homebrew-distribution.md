@@ -8,9 +8,11 @@ brew install rchekalov/silo/silo
 
 The fully-qualified name is required because homebrew-cask already has a `silo` cask (an unrelated macOS app). Using just `brew install silo` resolves to that cask. The three-part form `rchekalov/silo/silo` (user/tap/formula) forces Homebrew to pick our formula.
 
-Homebrew pulls the source tarball for the tagged release, compiles silo on the user's machine (`make release-bundle`), and ad-hoc codesigns the resulting binary with the virtualization entitlement. No notarization, no Developer ID, no Gatekeeper quarantine prompts.
+Homebrew downloads a prebuilt tarball attached to the tagged GitHub Release, extracts the signed `silo` binary and `libSiloBridge.dylib` into the Homebrew prefix, and is done. No Swift or Go toolchain is pulled in — the tarball is ad-hoc codesigned with the virtualization entitlement at build time on CI's `macos-latest` runner, and ad-hoc signatures survive tar/untar.
 
-Compile time on a recent M-series: ~60 seconds (Go build + Swift bridge).
+Install time on a recent M-series: a few seconds (~10 MB download + extract).
+
+Source-build via `git clone && make install` still works for auditors who want to rebuild from source.
 
 ## What's in play
 
@@ -21,36 +23,36 @@ Compile time on a recent M-series: ~60 seconds (Go build + Swift bridge).
 
 The tap repo's `homebrew-` prefix is required by Homebrew convention — it lets users run `brew tap rchekalov/silo` instead of `brew tap rchekalov/homebrew-silo`.
 
-### Source-build formula
+### Prebuilt-binary formula
 
 The canonical formula lives at `scripts/homebrew/silo.rb` in this repo (seed copy). On every tag the release workflow rewrites `version`, `url`, and `sha256` in the tap repo's `Formula/silo.rb`.
 
 Key formula properties:
 
-- `url` points at the auto-generated GitHub source tarball (`.../archive/refs/tags/v<version>.tar.gz`). No asset upload required.
-- `depends_on "go" => :build` and `depends_on "swift" => :build` — Homebrew resolves the toolchains.
-- `depends_on :macos`, `depends_on arch: :arm64`, `depends_on macos: :tahoe` — macOS 26 on Apple Silicon only.
-- `install` is one line: `make release-bundle PREFIX=#{prefix} VERSION=#{version}`. That target is defined in the main repo's `Makefile` and is the contract between silo and Homebrew.
+- `url` points at the prebuilt tarball attached to the GitHub Release: `.../releases/download/v<version>/silo-<version>-macos-arm64.tar.gz`.
+- No build deps. No `depends_on "go"`, no `depends_on "swift"`. That drops ~3.5 GB of transitive deps — Swift 6 pulls in Python (via LLDB), `openssl@3`, `sqlite`, `readline`, `xz`, `zstd`, `ca-certificates`, and none of those run Silo.
+- `depends_on :macos`, `depends_on arch: :arm64`, `depends_on macos: :tahoe` — macOS 26 on Apple Silicon only. `libSiloBridge.dylib` links only against the system Swift runtime bundled in macOS 26 (`/usr/lib/swift/...`), not Homebrew Swift.
+- `install` is two lines: `bin.install "bin/silo"` and `(lib/"silo").install Dir["lib/silo/*"]`. The binary has an `@executable_path/../lib/silo` rpath baked in at build time, so it resolves the dylib under any prefix without further relinking.
 - `caveats` tells the user about `PATH` and the one-time runtime bootstrap.
 
-### The `release-bundle` Makefile target
+### The `release-bundle` + `release-tarball` Makefile targets
 
 ```
-make release-bundle PREFIX=<dir> [VERSION=<tag>]
+make release-bundle PREFIX=<dir> VERSION=<tag>
+make release-tarball PREFIX=<dir> VERSION=<tag> OUT_DIR=<dir>
 ```
 
-- Builds release with rpath pointing at `$PREFIX/lib/silo` (so the installed binary resolves the dylib from within the Homebrew prefix).
-- Bakes `VERSION` into the binary via `-ldflags "-X .../version.Version=..."` so `silo --version` matches the tag.
-- Ad-hoc codesigns both the binary and the dylib with `silo.entitlements`.
-- Lays out `$PREFIX/bin/silo` and `$PREFIX/lib/silo/libSiloBridge.dylib`.
+- `release-bundle` lays out `$PREFIX/bin/silo` + `$PREFIX/lib/silo/libSiloBridge.dylib`, bakes `VERSION` into the binary via `-ldflags -X ...version.Version=...`, and ad-hoc codesigns both files with `silo.entitlements`.
+- `release-tarball` tars `$PREFIX/{bin,lib}` into `$OUT_DIR/silo-<VERSION>-macos-arm64.tar.gz` and writes an `.sha256` sidecar next to it.
+- The release build rpath is `@executable_path/../lib/silo` (relative), so the tarball is reusable under any install prefix.
 
 ## Release workflow
 
 `.github/workflows/release.yml` fires on tag push `v*`:
 
-1. **verify** (macos-latest, arm64) — checks out the tag, runs `make bridge && make test && make release VERSION=<tag>`, and confirms `./bin/silo-release --version` matches the tag.
-2. **publish-release** (ubuntu-latest) — creates the GitHub Release with auto-generated notes, downloads the source tarball, computes its SHA-256.
-3. **update-formula** (ubuntu-latest) — clones the tap repo using `TAP_GITHUB_TOKEN`, rewrites `version` / `url` / `sha256` in `Formula/silo.rb`, commits, pushes. Skipped for pre-release tags that contain a dash (e.g., `v0.4.0-rc1`).
+1. **verify** (macos-latest, arm64) — builds + tests, runs `make release-bundle PREFIX=$STAGE VERSION=<tag>`, confirms `$STAGE/bin/silo --version` matches the tag, then runs `make release-tarball` to produce `silo-<version>-macos-arm64.tar.gz` + sidecar, and also builds the `silo-runtime-arm64.tar.gz` runtime bundle (vmlinux + initfs.ext4). Both artifacts are uploaded via `actions/upload-artifact`.
+2. **publish-release** (ubuntu-latest) — downloads both artifacts, reads the prebuilt-tarball sha256 from its sidecar file (no re-hash, no network fetch), and creates the GitHub Release with all four files attached (prebuilt tarball + sidecar, runtime bundle + sidecar).
+3. **update-formula** (ubuntu-latest) — clones the tap repo using `TAP_GITHUB_TOKEN`, rewrites `version` / `url` / `sha256` in `Formula/silo.rb` to point at the prebuilt-tarball release-asset URL, commits, pushes. Skipped for pre-release tags that contain a dash (e.g., `v0.4.0-rc1`).
 
 After the workflow finishes, users running `brew update && brew upgrade` pull the new version. Fresh installs of `brew install silo` use it immediately.
 
@@ -76,7 +78,7 @@ A personal tap works immediately but requires users to tap first. Getting into `
 - Project must be notable (active users, repo visibility).
 - Stable release — no `0.0.x`.
 - Must pass `brew audit --new silo`.
-- Homebrew-core formulas that invoke `make` + sign are acceptable, but source-build formulas are generally preferred over pre-built binaries.
+- Homebrew-core prefers source-build formulas over prebuilt-binary formulas; the tap formula's current prebuilt-download shape would need to be reworked for core (either as a `bottle` produced by Homebrew's build farm, or a source-build formula using Homebrew-supplied `go` + `swift`).
 
 This is a post-1.0 goal. For the 0.x series, the personal tap is the right choice: faster iteration, no review process, full control.
 

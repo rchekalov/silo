@@ -134,6 +134,7 @@ The build has two stages: Swift bridge first, then Go binary (linked against the
 | `make sign` | Release build + codesign |
 | `make install` | Release build + sign + install to /usr/local/bin + /usr/local/lib/silo |
 | `make release-bundle PREFIX=<dir> [VERSION=<tag>]` | Build + sign into `$PREFIX/{bin,lib/silo}` (Homebrew-facing) |
+| `make release-tarball PREFIX=<dir> VERSION=<tag> OUT_DIR=<dir>` | Package an existing bundle into `silo-<VERSION>-macos-arm64.tar.gz` + `.sha256` (CI-only; run after `release-bundle`) |
 | `make test` | Run `go test ./...` with `CGO_LDFLAGS` and `DYLD_LIBRARY_PATH` |
 | `make test-vm` | Run end-to-end VM integration tests (`tests/integration/run-all.sh`) |
 | `make tools-install` | Install pinned `golangci-lint` into `./bin/` + `go mod download` |
@@ -152,16 +153,19 @@ The build has two stages: Swift bridge first, then Go binary (linked against the
 - Apple Containerization framework (pulled by SPM for the bridge)
 
 **Environment variables / Make variables:**
-- `CGO_LDFLAGS` — `-L<bridge-build-dir> -lSiloBridge -Wl,-rpath,<dir>` — embeds the rpath at link time so the binary resolves the dylib without `DYLD_LIBRARY_PATH`.
+- `CGO_LDFLAGS` — `-L<bridge-build-dir> -lSiloBridge -Wl,-rpath,<dir>` — embeds the rpath at link time so the binary resolves the dylib without `DYLD_LIBRARY_PATH`. The release build uses the relocatable rpath `@executable_path/../lib/silo` so the binary resolves its dylib at `<prefix>/lib/silo/libSiloBridge.dylib` for any `<prefix>` — required for the prebuilt Homebrew tarball to work under Homebrew's cellar.
 - `DYLD_LIBRARY_PATH` — set only for `go test` so unit tests can dlopen the bridge.
-- `LIB_INSTALL_DIR` — overridable install location for `libSiloBridge.dylib`. Defaults to `/usr/local/lib/silo`. Homebrew passes `LIB_INSTALL_DIR=#{libexec}/silo` via the `release-bundle` target.
+- `LIB_INSTALL_DIR` — overridable install location for `libSiloBridge.dylib`. Defaults to `/usr/local/lib/silo`. Used by `make install`; `release-bundle` pins it to `$PREFIX/lib/silo` but the actual rpath baked into the binary is now relative.
 - `VERSION` — optional. When set, baked into the binary via `-ldflags "-X github.com/rchekalov/silo/internal/version.Version=..."` so `silo --version` matches the release tag.
 
 **Release & distribution:**
 - `.github/workflows/ci.yml` — PR + push CI: `make bridge && make test && make sign-debug` on `macos-latest` (arm64). Uploads the signed debug binary as an artifact.
-- `.github/workflows/release.yml` — on tag `v*`: verifies build, creates a GitHub Release, computes the source-tarball SHA-256, bumps `Formula/silo.rb` in `rchekalov/homebrew-silo` via the `TAP_GITHUB_TOKEN` secret.
-- `scripts/homebrew/silo.rb` — seed formula for the tap repo. Homebrew installs from source via `make release-bundle PREFIX=#{prefix} VERSION=#{version}`.
+- `.github/workflows/release.yml` — on tag `v*`: builds + codesigns a prebuilt tarball (`silo-<version>-macos-arm64.tar.gz`) via `make release-bundle` + `make release-tarball`, attaches it (plus the runtime bundle) to a GitHub Release, and bumps `Formula/silo.rb` in `rchekalov/homebrew-silo` to point at the new release-asset URL + sidecar sha256. Requires `TAP_GITHUB_TOKEN`.
+- `scripts/homebrew/silo.rb` — seed formula for the tap repo. Homebrew downloads the prebuilt tarball from the GitHub Release and extracts it; no Swift/Go build deps. Source-build via `git clone && make install` still works for auditors.
 - `docs/homebrew-distribution.md` — end-to-end setup steps (create tap repo, add secret, tag, validate).
+
+**Before tagging a release:**
+- Bump `internal/version/version.go` to the new version (e.g. `var Version = "0.4.17"`). This is the value reported by plain `make build` / `go build`; tagged releases override it via `-ldflags` in `release.yml`, so it only matters for dev builds — but it goes stale immediately if not bumped.
 
 ## Project Structure
 

@@ -58,6 +58,27 @@ jobs:
           echo "$VERSION_OUT" | grep -q "${{ steps.meta.outputs.version }}" \
             || (echo "version mismatch"; exit 1)
 
+      # Package the signed binary + dylib into a tarball that the Homebrew
+      # formula downloads directly. This eliminates ~3.5 GB of build-time
+      # deps (go, swift, and swift's transitive python/openssl/etc.) on the
+      # user side — `brew install` becomes a download+extract.
+      - name: Package prebuilt tarball
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          make release-tarball \
+            PREFIX="$STAGE" \
+            VERSION=${{ steps.meta.outputs.version }} \
+            OUT_DIR=dist
+          ls -la dist
+
+      - name: Upload prebuilt tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: silo-prebuilt-arm64
+          path: dist/
+          retention-days: 1
+
       # Build the prebuilt runtime bundle (vmlinux + initfs.ext4) so users who
       # install silo via Homebrew don't have to cross-compile vminitd on their
       # own machines. The hidden `bootstrap-runtime` subcommand runs the same
@@ -88,54 +109,47 @@ jobs:
       sha256: ${{ steps.sha.outputs.sha256 }}
 
     steps:
+      - name: Download prebuilt tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: silo-prebuilt-arm64
+          path: dist
+
       - name: Download runtime bundle artifact
         uses: actions/download-artifact@v4
         with:
           name: silo-runtime-arm64
           path: runtime-dist
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          # Attach the prebuilt runtime so `silo install` on a fresh Homebrew
-          # machine can download vmlinux+initfs.ext4 instead of cross-compiling.
-          files: |
-            runtime-dist/silo-runtime-arm64.tar.gz
-            runtime-dist/silo-runtime-arm64.tar.gz.sha256
-
-      - name: Compute sha256 of source tarball
+      # Read the sha256 produced by `make release-tarball` on macOS. Avoids a
+      # second hash + avoids the retry loop the old source-tarball flow needed
+      # against GitHub's lazy archive generation.
+      - name: Read prebuilt tarball sha256
         id: sha
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
-          # Authenticated request — works for public and private repos.
-          # GitHub may generate the source tarball lazily, so retry.
-          for i in 1 2 3 4 5; do
-            if curl -fsSL \
-                 -H "Authorization: Bearer $GH_TOKEN" \
-                 -H "Accept: application/vnd.github+json" \
-                 -o src.tar.gz "$URL"; then
-              break
-            fi
-            echo "tarball not ready yet (attempt $i), retrying..."
-            sleep 10
-          done
-          if [ ! -s src.tar.gz ]; then
-            echo "error: could not fetch source tarball after 5 attempts"
-            exit 1
-          fi
-          SHA=$(shasum -a 256 src.tar.gz | awk '{print $1}')
+          VERSION="${{ needs.verify.outputs.version }}"
+          SHA=$(awk '{print $1}' "dist/silo-${VERSION}-macos-arm64.tar.gz.sha256")
           if [ -z "$SHA" ]; then
             echo "error: empty sha256 — refusing to proceed"
             exit 1
           fi
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
-          echo "source tarball sha256: $SHA"
+          echo "prebuilt tarball sha256: $SHA"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Attach the prebuilt silo binary tarball (Homebrew downloads this)
+          # and the prebuilt runtime so first `silo install` can skip
+          # cross-compiling vminitd.
+          files: |
+            dist/silo-${{ needs.verify.outputs.version }}-macos-arm64.tar.gz
+            dist/silo-${{ needs.verify.outputs.version }}-macos-arm64.tar.gz.sha256
+            runtime-dist/silo-runtime-arm64.tar.gz
+            runtime-dist/silo-runtime-arm64.tar.gz.sha256
 
   update-formula:
     name: Bump Homebrew formula
@@ -165,7 +179,7 @@ jobs:
             exit 1
           fi
 
-          NEW_URL="https://github.com/${REPO}/archive/refs/tags/v${VERSION}.tar.gz"
+          NEW_URL="https://github.com/${REPO}/releases/download/v${VERSION}/silo-${VERSION}-macos-arm64.tar.gz"
 
           sed -i "s|^  version \".*\"|  version \"${VERSION}\"|" "$FORMULA"
           sed -i "s|^  url \".*\"|  url \"${NEW_URL}\"|"       "$FORMULA"
