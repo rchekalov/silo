@@ -6,10 +6,14 @@ set -euo pipefail
 SILO_BIN="${SILO_BIN:-silo}"
 TIMEOUT=120
 
-# Ensure python is installed (awk+grep -qx matches run-all.sh's tool-listing idiom)
-if ! "$SILO_BIN" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx python; then
-    echo "Installing python..."
-    "$SILO_BIN" install python
+# Ensure python is installed AND the LSP rootfs is baked (pyright in
+# ~/.silo/builds/python/rootfs.ext4). An install that predates the
+# lsp.install wiring registers the tool without baking pyright, so
+# `silo lsp` still fails — force a reinstall in that case.
+if ! "$SILO_BIN" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx python ||
+   [ ! -f "$HOME/.silo/builds/python/rootfs.ext4" ]; then
+    echo "Installing python (baking LSP)..."
+    "$SILO_BIN" install python --force
 fi
 
 # Create temp workspace with a Python file
@@ -58,8 +62,10 @@ read_lsp_response() {
         return 1
     fi
 
-    # Read exactly content_length bytes
-    head -c "$content_length" <&"$fd"
+    # Read exactly content_length bytes. Must be `dd bs=1` (one byte at a
+    # time) — `head -c` uses buffered I/O and drains the fifo past the body,
+    # silently discarding later frames.
+    dd bs=1 count="$content_length" <&"$fd" 2>/dev/null
 }
 
 echo "Starting silo lsp python..."
@@ -89,7 +95,20 @@ JSON
 )
 send_lsp "$INIT_REQ" >&5
 
-INIT_RESP=$(read_lsp_response 6 60)
+# Skip server-initiated notifications (window/logMessage, progress, etc.)
+# until we get the response to our initialize request (matched by "id":1).
+INIT_RESP=""
+for _ in 1 2 3 4 5; do
+    frame=$(read_lsp_response 6 60)
+    if echo "$frame" | grep -q '"id":1'; then
+        INIT_RESP="$frame"
+        break
+    fi
+done
+if [ -z "$INIT_RESP" ]; then
+    echo "FAIL: no frame with id:1 received after initialize"
+    exit 1
+fi
 if echo "$INIT_RESP" | grep -q '"capabilities"'; then
     echo "PASS: initialize response contains capabilities"
 else
@@ -97,13 +116,7 @@ else
     echo "Response: $INIT_RESP"
     exit 1
 fi
-
-if echo "$INIT_RESP" | grep -q '"id":1'; then
-    echo "PASS: initialize response has correct id"
-else
-    echo "FAIL: initialize response has wrong id"
-    exit 1
-fi
+echo "PASS: initialize response has correct id"
 
 # --- Test 2: Initialized notification ---
 echo "Testing: LSP initialized notification"
@@ -116,12 +129,20 @@ echo "Testing: LSP shutdown request"
 SHUTDOWN='{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}'
 send_lsp "$SHUTDOWN" >&5
 
-SHUTDOWN_RESP=$(read_lsp_response 6 30)
-if echo "$SHUTDOWN_RESP" | grep -q '"id":2'; then
+# Same skip-notifications loop as initialize — pyright can send diagnostics
+# or progress frames between shutdown and its response.
+SHUTDOWN_RESP=""
+for _ in 1 2 3 4 5; do
+    frame=$(read_lsp_response 6 30)
+    if echo "$frame" | grep -q '"id":2'; then
+        SHUTDOWN_RESP="$frame"
+        break
+    fi
+done
+if [ -n "$SHUTDOWN_RESP" ]; then
     echo "PASS: shutdown response received"
 else
     echo "FAIL: shutdown response missing or wrong"
-    echo "Response: $SHUTDOWN_RESP"
     exit 1
 fi
 

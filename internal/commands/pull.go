@@ -114,13 +114,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Project-scoped bakes: if .siloconf adds extra postInstall steps for a
-	// tool, produce <projectRoot>/.silo/<tool>/rootfs.ext4 that the runtime
-	// picks up via engine.ephemeral's project-rootfs probe. Idempotent —
-	// ApplyProjectPostInstall hashes the steps and skips when up-to-date.
+	// Project-scoped bakes. Two triggers:
+	//
+	//   1. .siloconf adds extra postInstall steps for a tool -> bake a delta
+	//      on top of the global rootfs (existing behaviour).
+	//   2. The project's effective image differs from the globally installed
+	//      image for the tool (e.g. `tools: [python@3.12]` while the global
+	//      install is 3.14) -> bake the FULL postInstall chain from scratch
+	//      against the pinned image. The global rootfs is for the wrong
+	//      toolchain version and must not seed.
+	//
+	// The full-bake branch covers the LSP-version-match case: `lsp.install`
+	// is merged into the registry postInstall at decode time, so a full
+	// project bake against the pinned image produces a language server that
+	// matches `silo run`'s toolchain. Both paths are idempotent via a
+	// hash sidecar next to the project rootfs.
 	if merged != nil && root != "" {
 		for _, tool := range projectTools {
-			if err := bakeProjectPostInstallFor(tool, merged, global, root); err != nil {
+			if err := bakeProjectForTool(tool, merged, global, root); err != nil {
 				failed = append(failed, fmt.Sprintf("%s (bake): %v", tool, err))
 				fmt.Fprintf(os.Stderr, "error: %s (bake): %v\n", tool, err)
 			}
@@ -274,6 +285,49 @@ func rootfsCacheHit(def config.ToolDefinition) (bool, error) {
 	digest := img.Digest()
 	size := def.RootfsSizeMB * 1024 * 1024
 	return cache.NewRootfs("").Has(digest, size), nil
+}
+
+// bakeProjectForTool is the sync-time bake dispatcher. It picks between:
+//
+//   - Full bake from scratch, when the project pins a different image version
+//     than the global install (the global rootfs was produced against the
+//     wrong toolchain and can't seed the bake).
+//   - Delta bake on top of the global rootfs, when .siloconf adds extra
+//     postInstall steps for the tool.
+//   - No-op, when neither applies.
+//
+// `silo add` keeps calling `bakeProjectPostInstallFor` directly because it
+// always operates on the existing install's image (adding packages, not
+// changing the version).
+func bakeProjectForTool(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) error {
+	if merged == nil || root == "" {
+		return nil
+	}
+	globalDef, installed := global.Tools[tool]
+	if !installed {
+		// `silo sync`'s planner installs globally before this runs, so a
+		// missing entry here indicates a planner error. Surface rather
+		// than silently skip the bake.
+		return fmt.Errorf("tool %q is not installed; install aborted earlier", tool)
+	}
+	def, _ := resolvePullDef(tool, merged, global)
+	if def.Image != globalDef.Image {
+		e := engine.NewContainerEngine(global)
+		if err := e.EnsureRuntime(); err != nil {
+			return err
+		}
+		baked, err := tools.ApplyProjectFullBake(bakeAdapter(e), tool, def, def.PostInstall, root)
+		if err != nil {
+			return err
+		}
+		if baked {
+			fmt.Printf("  %-20s  baked project rootfs at %s (pinned %s)\n", tool, runtime.ProjectRootfs(root, tool), def.Image)
+		} else {
+			fmt.Printf("  %-20s  project rootfs up-to-date (pinned %s)\n", tool, def.Image)
+		}
+		return nil
+	}
+	return bakeProjectPostInstallFor(tool, merged, global, root)
 }
 
 // bakeProjectPostInstallFor runs a project-scoped bake for a single tool

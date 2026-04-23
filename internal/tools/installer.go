@@ -229,6 +229,12 @@ type BakeOptions struct {
 	Target      string   // rootfs.ext4 path to persist to
 	Scope       string   // "global" or "project"
 	ProjectRoot string   // required when Scope == "project"
+	// FromScratch forces the bake VM to ignore any existing global rootfs and
+	// start from the pinned image cache. Only meaningful when Scope=="project";
+	// needed when the project pins a different image version than the global
+	// install, so seeding from the wrong-version global rootfs doesn't poison
+	// the project bake.
+	FromScratch bool
 }
 
 // BakeTool runs opts.Steps in a writable VM and snapshots the resulting
@@ -270,7 +276,11 @@ func BakeTool(run BakeFunc, opts BakeOptions) (config.ToolDefinition, error) {
 		buildDef.Network = &config.NetworkConfig{HostAccess: true}
 	}
 
-	global := opts.Scope == "global"
+	// The RunSetup hook interprets its final argument as "don't seed from the
+	// global rootfs cache" — true means cold-create from the image. For a
+	// project-scoped bake that crosses a version boundary, we want the same
+	// cold start even though the scope is "project".
+	global := opts.Scope == "global" || opts.FromScratch
 	exit, err := run(opts.Name, buildDef, "sh", []string{"-c", script}, opts.Target, global)
 	if err != nil {
 		return opts.Def, fmt.Errorf("bake: %w", err)

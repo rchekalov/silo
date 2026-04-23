@@ -25,7 +25,10 @@ tools:
       PYTHONDONTWRITEBYTECODE: "1"
     lsp:
       command: ["pyright-langserver", "--stdio"]
-      install: "pip install pyright"
+      # `pyright[nodejs]` bundles a Node binary at pip-install time; plain
+      # `pyright` defers to a runtime nodeenv download that fails in the
+      # network-less LSP VM.
+      install: "pip install 'pyright[nodejs]'"
       cache:
         - guest: /root/.cache/pyright
           host: ~/.silo/lsp-cache/python/pyright

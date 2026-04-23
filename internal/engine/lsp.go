@@ -42,8 +42,20 @@ func (r *ephemeralRunner) RunLSP(opts RunLSPOptions) (int32, error) {
 	id := fmt.Sprintf("silo-lsp-%s-%s", opts.ToolName, shortID())
 	lspCfg := opts.Tool.LSP
 
+	// Language servers are memory-hungry — pyright-langserver loads all of
+	// typeshed plus the project via a node runtime, gopls tracks module
+	// dependency graphs, rust-analyzer mirrors the whole crate graph. The
+	// tool's default 512 MB (good enough for a quick `silo run`) silently
+	// OOMs a fresh LSP VM, so lift the floor here without touching the
+	// stored definition.
+	applyLspResourceFloors(&opts.Tool)
+
 	effectiveNet, _, imageRef := resolveOverrides(opts.Tool, opts.ToolName, opts.ProjectConfig)
 	needsNet := effectiveNet != nil && effectiveNet.HostAccess
+
+	// Point the user at the right recovery before we hit the opaque
+	// "failed to find target executable" error from vminitd.
+	warnIfLspBakeMissing(opts, imageRef)
 
 	mgr, err := r.newManager(needsNet)
 	if err != nil {
@@ -145,9 +157,13 @@ func (r *ephemeralRunner) RunLSP(opts RunLSPOptions) (int32, error) {
 		return -1, errs.Containerf("start: %v", err)
 	}
 
-	// Close the container-owned ends on the host side so EOF propagates.
-	_ = toContRead.Close()
-	_ = fromContWrite.Close()
+	// The Swift bridge relays host<->VM stdio over vsock: it keeps reading
+	// from toContRead and writing to fromContWrite for the entire lifetime
+	// of the container. Closing those ends on the host side here would cut
+	// the relay and the LSP process would see an immediate stdin EOF and
+	// exit 1 with no output. We keep them open and let `defer ctr.Close()`
+	// plus the explicit closes at the bottom of the function tear things
+	// down after the process has exited.
 
 	guestRoot := opts.Tool.Workdir
 	if guestRoot == "" {
@@ -202,8 +218,10 @@ func (r *ephemeralRunner) RunLSP(opts RunLSPOptions) (int32, error) {
 
 	_ = ctr.Stop()
 	mgr.Delete(id)
+	_ = toContRead.Close()
 	_ = toContWrite.Close()
 	_ = fromContRead.Close()
+	_ = fromContWrite.Close()
 	return exit, nil
 }
 
@@ -239,6 +257,56 @@ func (r *ephemeralRunner) acquireContainerForLSP(
 		return ctr, nil
 	}
 	return r.createOrRetry(mgr, id, imageRef, rootfsSize, cfg)
+}
+
+// applyLspResourceFloors lifts a tool definition's resource limits to the
+// minimums a language server usually needs. Applied per-call; the stored
+// definition is not modified, so `silo run` keeps its lighter defaults.
+func applyLspResourceFloors(t *config.ToolDefinition) {
+	const (
+		minLspCPUs     int32  = 2
+		minLspMemoryMB uint64 = 2048
+	)
+	if t.CPUs < minLspCPUs {
+		t.CPUs = minLspCPUs
+	}
+	if t.MemoryMB < minLspMemoryMB {
+		t.MemoryMB = minLspMemoryMB
+	}
+}
+
+// warnIfLspBakeMissing prints a best-effort hint when the LSP is about to
+// boot against a rootfs that won't contain the language server. Covers two
+// cases:
+//
+//  1. The tool declares `lsp.install` but has no BuildRootfs — either the
+//     install predates the sync-time bake wiring, or the user has never
+//     run install/sync. Suggest `silo install --force`.
+//
+//  2. The project pins a different image than the tool's baseline and no
+//     project rootfs exists. Suggest `silo sync`, which bakes the LSP
+//     against the pinned toolchain so the server matches `silo run`.
+//
+// Both are hints, not errors — the LSP may still boot from a fallback
+// rootfs if the server happens to be in the base image.
+func warnIfLspBakeMissing(opts RunLSPOptions, imageRef string) {
+	if opts.Tool.LSP == nil {
+		return
+	}
+	if opts.Tool.LSP.Install != "" && opts.Tool.BuildRootfs == "" {
+		fmt.Fprintf(os.Stderr,
+			"hint: %s has an LSP install step but no baked rootfs; "+
+				"run `silo install %s --force` to bake it.\n",
+			opts.ToolName, opts.ToolName)
+	}
+	if imageRef != "" && imageRef != opts.Tool.Image && opts.ProjectRoot != "" {
+		if _, err := os.Stat(runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)); err != nil {
+			fmt.Fprintf(os.Stderr,
+				"hint: project pins %s but no project rootfs exists; "+
+					"run `silo sync` so the LSP matches the pinned version.\n",
+				imageRef)
+		}
+	}
 }
 
 // pipePair creates an OS pipe; read end in [0], write end in [1].

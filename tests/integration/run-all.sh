@@ -82,9 +82,14 @@ run_test "proxy-allowlist" "$SCRIPT_DIR/network/proxy-allowlist.sh" "python"
 
 echo ""
 echo "--- LSP ---"
+# lsp-install-bakes runs first: it force-reinstalls python so any stale
+# pre-existing bake (e.g. from an older registry without pyright[nodejs])
+# is overwritten before the lifecycle/path-rewriting tests consume it.
+run_test "lsp-install-bakes" "$SCRIPT_DIR/lsp/lsp-install-bakes.sh" ""
 run_test "lsp-lifecycle" "$SCRIPT_DIR/lsp/lsp-lifecycle.sh" ""
 run_test "lsp-path-rewriting" "$SCRIPT_DIR/lsp/path-rewriting.sh" ""
 run_test "lsp-ide-config" "$SCRIPT_DIR/lsp/ide-config.sh" ""
+run_test "lsp-version-pin" "$SCRIPT_DIR/lsp/lsp-version-pin.sh" ""
 
 echo ""
 echo "--- Errors ---"

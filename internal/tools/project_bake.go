@@ -71,6 +71,61 @@ func ApplyProjectPostInstall(
 	return true, nil
 }
 
+// ApplyProjectFullBake bakes the *full* postInstall chain (registry base +
+// project overrides, as already merged in def.PostInstall) into a
+// project-scoped rootfs, starting cold from the pinned image rather than
+// seeding from the global rootfs.
+//
+// Needed when a project pins a different image version than the globally
+// installed one: the global rootfs was produced against the wrong toolchain
+// and can't be an overlay base. The hash sidecar still provides idempotency,
+// keyed on the pinned-image identity via def.Image so re-pins invalidate the
+// cached bake.
+func ApplyProjectFullBake(
+	run BakeFunc,
+	name string,
+	def config.ToolDefinition,
+	allSteps []string,
+	projectRoot string,
+) (bool, error) {
+	if len(allSteps) == 0 {
+		return false, nil
+	}
+	if projectRoot == "" {
+		return false, fmt.Errorf("project full bake for %s requires a project root (.siloconf)", name)
+	}
+
+	target := runtime.ProjectRootfs(projectRoot, name)
+	hashPath := target + ".sha256"
+	// Mix the pinned image reference into the hash so a `silo use python@3.11`
+	// after a prior @3.12 sync doesn't short-circuit against the old rootfs.
+	want := hashSteps(append([]string{"image=" + def.Image}, allSteps...))
+
+	if existing, err := os.ReadFile(hashPath); err == nil {
+		if strings.TrimSpace(string(existing)) == want {
+			if _, statErr := os.Stat(target); statErr == nil {
+				return false, nil
+			}
+		}
+	}
+
+	if _, err := BakeTool(run, BakeOptions{
+		Name:        name,
+		Def:         def,
+		Steps:       allSteps,
+		Target:      target,
+		Scope:       "project",
+		ProjectRoot: projectRoot,
+		FromScratch: true,
+	}); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(hashPath, []byte(want+"\n"), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record bake hash at %s: %v\n", hashPath, err)
+	}
+	return true, nil
+}
+
 // hashSteps returns the SHA-256 of `\n`-joined steps, as hex. The separator
 // is newline (not `&&`) so whitespace inside a step cannot collide with
 // another step's boundary — keeps the hash stable against step reorderings

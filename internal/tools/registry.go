@@ -71,6 +71,13 @@ func (e RegistryEntry) ToToolDefinition(version string) config.ToolDefinition {
 		LSP:         cloneLsp(e.LSP),
 		PostInstall: append([]string(nil), e.PostInstall...),
 	}
+	// Treat lsp.install as a registry-level postInstall step so the same bake
+	// pipeline (install-time global bake, sync-time project bake, MergeOver
+	// append, idempotency hash) handles language-server install with no
+	// special case. Append so any existing postInstall runs first.
+	if e.LSP != nil && strings.TrimSpace(e.LSP.Install) != "" {
+		def.PostInstall = append(def.PostInstall, e.LSP.Install)
+	}
 	if e.CPUs != nil {
 		def.CPUs = *e.CPUs
 	}

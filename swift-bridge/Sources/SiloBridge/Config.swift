@@ -193,6 +193,17 @@ func applyConfig(
         try terminal.setraw()
         swiftConfig.process.setTerminalIO(terminal: terminal)
     } else {
+        // stdin is a ReaderStream; Terminal conforms to ReaderStream so the
+        // same descriptor-wrapping pattern used for stdout/stderr applies.
+        // Without this, the container's stdin is unbound and processes that
+        // read from it (pyright-langserver, rust-analyzer) see an immediate
+        // EOF and exit. Note: `applyConfig` in this file is not on the hot
+        // path used by `silo lsp` — see the inline blocks in Bridge.swift's
+        // sb_manager_create_container_from_ref / _from_image — but keeping
+        // this in sync avoids future drift if callers switch to applyConfig.
+        if c.stdin_fd >= 0 {
+            swiftConfig.process.stdin = try Terminal(descriptor: c.stdin_fd, setInitState: false)
+        }
         if c.stdout_fd >= 0 {
             swiftConfig.process.stdout = try Terminal(descriptor: c.stdout_fd, setInitState: false)
         }
@@ -221,6 +232,9 @@ func applyExecConfig(
         let terminal = try Terminal.current
         swiftConfig.setTerminalIO(terminal: terminal)
     } else {
+        if c.stdin_fd >= 0 {
+            swiftConfig.stdin = try Terminal(descriptor: c.stdin_fd, setInitState: false)
+        }
         if c.stdout_fd >= 0 {
             swiftConfig.stdout = try Terminal(descriptor: c.stdout_fd, setInitState: false)
         }

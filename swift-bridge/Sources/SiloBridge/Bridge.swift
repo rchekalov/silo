@@ -113,6 +113,7 @@ public func sb_manager_create_container_from_ref(
     let workDir = config.pointee.working_directory.map { String(cString: $0) } ?? "/"
     let envVars = readStringArray(config.pointee.env_vars)
     let useTerm = config.pointee.use_terminal
+    let stdinFd = config.pointee.stdin_fd
     let stdoutFd = config.pointee.stdout_fd
     let stderrFd = config.pointee.stderr_fd
     let autoInject = config.pointee.auto_inject_host_silo
@@ -203,6 +204,13 @@ public func sb_manager_create_container_from_ref(
                     try terminal.setraw()
                     swiftConfig.process.setTerminalIO(terminal: terminal)
                 } else {
+                    // Wire host-provided stdin FD (a pipe for `silo lsp`) so
+                    // the container process actually receives the stream it
+                    // expects. Without this branch, stdin is unbound and
+                    // language servers see an immediate EOF and exit.
+                    if stdinFd >= 0 {
+                        swiftConfig.process.stdin = try Terminal(descriptor: stdinFd, setInitState: false)
+                    }
                     if stdoutFd >= 0 {
                         swiftConfig.process.stdout = try Terminal(descriptor: stdoutFd, setInitState: false)
                     }
@@ -247,6 +255,7 @@ public func sb_manager_create_container_from_image(
     let workDir = config.pointee.working_directory.map { String(cString: $0) } ?? "/"
     let envVars = readStringArray(config.pointee.env_vars)
     let useTerm = config.pointee.use_terminal
+    let stdinFd = config.pointee.stdin_fd
     let stdoutFd = config.pointee.stdout_fd
     let stderrFd = config.pointee.stderr_fd
     let autoInject = config.pointee.auto_inject_host_silo
@@ -310,6 +319,7 @@ public func sb_manager_create_container_from_image(
                     try terminal.setraw()
                     swiftConfig.process.setTerminalIO(terminal: terminal)
                 } else {
+                    if stdinFd >= 0 { swiftConfig.process.stdin = try Terminal(descriptor: stdinFd, setInitState: false) }
                     if stdoutFd >= 0 { swiftConfig.process.stdout = try Terminal(descriptor: stdoutFd, setInitState: false) }
                     if stderrFd >= 0 { swiftConfig.process.stderr = try Terminal(descriptor: stderrFd, setInitState: false) }
                 }
@@ -447,6 +457,7 @@ public func sb_container_exec(
     let args = readStringArray(config.pointee.arguments)
     let workDir = config.pointee.working_directory.map { String(cString: $0) } ?? "/"
     let useTerm = config.pointee.use_terminal
+    let stdinFd = config.pointee.stdin_fd
     let stdoutFd = config.pointee.stdout_fd
     let stderrFd = config.pointee.stderr_fd
 
@@ -459,6 +470,7 @@ public func sb_container_exec(
                 let terminal = try Terminal.current
                 execConfig.setTerminalIO(terminal: terminal)
             } else {
+                if stdinFd >= 0 { execConfig.stdin = try Terminal(descriptor: stdinFd, setInitState: false) }
                 if stdoutFd >= 0 { execConfig.stdout = try Terminal(descriptor: stdoutFd, setInitState: false) }
                 if stderrFd >= 0 { execConfig.stderr = try Terminal(descriptor: stderrFd, setInitState: false) }
             }
