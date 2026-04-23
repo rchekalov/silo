@@ -159,6 +159,16 @@ jobs:
     if: ${{ !contains(github.ref_name, '-') }}
 
     steps:
+      # Check out source (for the canonical formula at scripts/homebrew/silo.rb)
+      # into ./source/, and the tap into ./tap/. The job overwrites the tap's
+      # Formula/silo.rb with source's copy on every release, then seds the
+      # release-specific version/url/sha256 in. This keeps the tap structurally
+      # in sync with source — no drift when the formula shape changes.
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
       - name: Checkout tap
         uses: actions/checkout@v4
         with:
@@ -173,17 +183,24 @@ jobs:
           SHA256: ${{ needs.publish-release.outputs.sha256 }}
           REPO: ${{ github.repository }}
         run: |
-          FORMULA=Formula/silo.rb
-          if [ ! -f "$FORMULA" ]; then
-            echo "formula not found at $FORMULA"
+          set -euo pipefail
+          SRC_FORMULA=../source/scripts/homebrew/silo.rb
+          DST_FORMULA=Formula/silo.rb
+
+          if [ ! -f "$SRC_FORMULA" ]; then
+            echo "canonical formula not found at $SRC_FORMULA"
             exit 1
           fi
 
           NEW_URL="https://github.com/${REPO}/releases/download/v${VERSION}/silo-${VERSION}-macos-arm64.tar.gz"
 
-          sed -i "s|^  version \".*\"|  version \"${VERSION}\"|" "$FORMULA"
-          sed -i "s|^  url \".*\"|  url \"${NEW_URL}\"|"       "$FORMULA"
-          sed -i "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|"   "$FORMULA"
+          # Overwrite the tap's formula from the canonical source, then sed in
+          # the real values. Replaces the old surgical 3-line approach which
+          # silently left formula-shape drift when source changed.
+          cp "$SRC_FORMULA" "$DST_FORMULA"
+          sed -i "s|^  version \".*\"|  version \"${VERSION}\"|" "$DST_FORMULA"
+          sed -i "s|^  url \".*\"|  url \"${NEW_URL}\"|"         "$DST_FORMULA"
+          sed -i "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|"    "$DST_FORMULA"
 
       - name: Commit + push
         working-directory: tap
