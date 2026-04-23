@@ -4,8 +4,8 @@ set -euo pipefail
 
 SILO_BIN="${SILO_BIN:-silo}"
 
-# Ensure python is installed (need a real tool with LSP config)
-if ! "$SILO_BIN" list 2>/dev/null | grep -qw python; then
+# Ensure python is installed (awk+grep -qx matches run-all.sh's tool-listing idiom)
+if ! "$SILO_BIN" list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx python; then
     echo "Installing python..."
     "$SILO_BIN" install python
 fi
@@ -75,16 +75,16 @@ else
 fi
 
 # --- Test 4: Unsupported IDE ---
+# Capture output separately instead of piping — `set +e` disables errexit but not
+# pipefail, so `silo ide emacs | grep` would still fail from silo's non-zero exit
+# even when grep matches.
 echo "Testing: silo ide emacs (should fail)"
-set +e
-"$SILO_BIN" ide emacs 2>&1 | grep -qi "unsupported"
-RESULT=$?
-set -e
-
-if [ "$RESULT" -eq 0 ]; then
+OUTPUT=$("$SILO_BIN" ide emacs 2>&1) || true
+if echo "$OUTPUT" | grep -qi "unsupported"; then
     echo "PASS: unsupported IDE gives clear error"
 else
     echo "FAIL: unsupported IDE did not give clear error"
+    echo "Output: $OUTPUT"
     exit 1
 fi
 
