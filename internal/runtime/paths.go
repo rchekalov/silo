@@ -20,21 +20,22 @@ func Root() string {
 	return filepath.Join(home, ".silo")
 }
 
-func Config() string        { return filepath.Join(Root(), "config.yaml") }
-func ShimBin() string       { return filepath.Join(Root(), "bin") }
-func Kernel() string        { return filepath.Join(Root(), "vmlinux") }
-func Initfs() string        { return filepath.Join(Root(), "initfs.ext4") }
-func ImageStore() string    { return filepath.Join(Root(), "images") }
+func Config() string     { return filepath.Join(Root(), "config.yaml") }
+func ShimBin() string    { return filepath.Join(Root(), "bin") }
+func Kernel() string     { return filepath.Join(Root(), "vmlinux") }
+func Initfs() string     { return filepath.Join(Root(), "initfs.ext4") }
+func ImageStore() string { return filepath.Join(Root(), "images") }
+
 // ContentStore is where Apple Containerization actually writes pulled OCI
 // blobs (content-addressable, under `blobs/sha256/`). ImageStore() above is
 // historical — we created it early and kept the name, but the framework
 // picked "content" internally. pullprogress measures against this path.
-func ContentStore() string  { return filepath.Join(Root(), "content") }
-func Containers() string    { return filepath.Join(Root(), "containers") }
-func Cache() string         { return filepath.Join(Root(), "cache") }
-func Logs() string          { return filepath.Join(Root(), "logs") }
-func RootfsCache() string   { return filepath.Join(Root(), "rootfs-cache") }
-func Builds() string        { return filepath.Join(Root(), "builds") }
+func ContentStore() string   { return filepath.Join(Root(), "content") }
+func Containers() string     { return filepath.Join(Root(), "containers") }
+func Cache() string          { return filepath.Join(Root(), "cache") }
+func Logs() string           { return filepath.Join(Root(), "logs") }
+func RootfsCache() string    { return filepath.Join(Root(), "rootfs-cache") }
+func Builds() string         { return filepath.Join(Root(), "builds") }
 func GlobalSiloconf() string { return filepath.Join(Root(), "siloconf") }
 func LocalDownloads() string { return filepath.Join(Root(), ".local") }
 func UserRegistry() string   { return filepath.Join(Root(), "registry.yaml") }

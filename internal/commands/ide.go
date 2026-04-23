@@ -5,10 +5,11 @@ package commands
 import (
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/lsp"
-	"github.com/spf13/cobra"
 )
 
 var ideToolFilter string

@@ -12,7 +12,7 @@ import (
 
 // seedEntries populates the cache with n entries labelled "sha256:<i>" of
 // `size` bytes each, and backdates LastUsed so entries[0] is oldest.
-func seedEntries(t *testing.T, c *Rootfs, n int, size int) []string {
+func seedEntries(t *testing.T, c *Rootfs, n, size int) []string {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "src.ext4")
 	if err := os.WriteFile(src, make([]byte, size), 0o644); err != nil {

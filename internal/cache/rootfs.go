@@ -6,8 +6,9 @@
 // cache hit.
 //
 // Cache layout:
-//   ~/.silo/rootfs-cache/<digest-hex>.ext4       — the cached rootfs
-//   ~/.silo/rootfs-cache/<digest-hex>.lastused   — last CloneTo timestamp (LRU)
+//
+//	~/.silo/rootfs-cache/<digest-hex>.ext4       — the cached rootfs
+//	~/.silo/rootfs-cache/<digest-hex>.lastused   — last CloneTo timestamp (LRU)
 //
 // Historically entries were keyed on (digest, size) which stored the same
 // content twice when a tool's `rootfsSizeMB` changed. Migrate() collapses any
@@ -26,8 +27,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rchekalov/silo/internal/runtime"
 	"golang.org/x/sys/unix"
+
+	"github.com/rchekalov/silo/internal/runtime"
 )
 
 // Rootfs is a digest-keyed cache of rootfs ext4 files under ~/.silo/rootfs-cache/.

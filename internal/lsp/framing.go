@@ -26,7 +26,7 @@ func NewFrameReader(r io.Reader) *FrameReader { return &FrameReader{r: bufio.New
 
 // ReadMessage returns the next message body. Returns (nil, nil) on clean EOF.
 func (f *FrameReader) ReadMessage() ([]byte, error) {
-	var length int = -1
+	length := -1
 	for {
 		line, err := f.r.ReadString('\n')
 		if err != nil {

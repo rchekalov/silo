@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/engine"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/shim"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -74,7 +75,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		EnsureRuntime: e.EnsureRuntime,
 		PullImage:     e.PullImage,
 		RunCaptured:   captureRunAdapter(e),
-		RunSetup: bakeAdapter(e),
+		RunSetup:      bakeAdapter(e),
 	}
 
 	_, wasInstalled := cfg.Tools[toolName]

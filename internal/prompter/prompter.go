@@ -154,7 +154,7 @@ func (s *Scripted) next() (string, error) {
 	return a, nil
 }
 
-func (s *Scripted) Ask(_ , defaultValue string) (string, error) {
+func (s *Scripted) Ask(_, defaultValue string) (string, error) {
 	a, err := s.next()
 	if err != nil {
 		return "", err
@@ -192,7 +192,7 @@ func (s *Scripted) Pick(_ string, choices []string, defaultIndex int) (int, erro
 	return n - 1, nil
 }
 
-func (s *Scripted) Confirm(_ , requiredExact string) (bool, error) {
+func (s *Scripted) Confirm(_, requiredExact string) (bool, error) {
 	a, err := s.next()
 	if err != nil {
 		return false, err

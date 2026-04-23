@@ -95,38 +95,38 @@ type LspConfig struct {
 
 // ToolDefinition captures everything we need to create a VM and run a tool.
 type ToolDefinition struct {
-	Image        string            `yaml:"image"`
-	Shims        []ShimMapping     `yaml:"shims,omitempty"`
-	Cache        []CacheMount      `yaml:"cache,omitempty"`
-	Workdir      string            `yaml:"workdir,omitempty"`
-	Env          map[string]string `yaml:"env,omitempty"`
+	Image   string            `yaml:"image"`
+	Shims   []ShimMapping     `yaml:"shims,omitempty"`
+	Cache   []CacheMount      `yaml:"cache,omitempty"`
+	Workdir string            `yaml:"workdir,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
 	// PassEnv lists host env var names copied into the guest when set. Used by
 	// registry entries to declare the credential env their tool expects (e.g.
 	// claude-code → ANTHROPIC_API_KEY) so the tool works out of the box without
 	// the user wiring passEnv in every project's .siloconf. Merged with the
 	// project-level passEnv at runtime.
-	PassEnv      []string          `yaml:"passEnv,omitempty"`
-	CPUs         int32             `yaml:"cpus,omitempty"`
-	MemoryMB     uint64            `yaml:"memoryMB,omitempty"`
-	RootfsSizeMB uint64            `yaml:"rootfsSizeMB,omitempty"`
-	Network      *NetworkConfig    `yaml:"network,omitempty"`
-	Requires     []string          `yaml:"requires,omitempty"`
-	Ports        []PortMapping     `yaml:"ports,omitempty"`
-	BuildRootfs  string            `yaml:"buildRootfs,omitempty"`
-	BuildScript  string            `yaml:"buildScript,omitempty"`
+	PassEnv      []string       `yaml:"passEnv,omitempty"`
+	CPUs         int32          `yaml:"cpus,omitempty"`
+	MemoryMB     uint64         `yaml:"memoryMB,omitempty"`
+	RootfsSizeMB uint64         `yaml:"rootfsSizeMB,omitempty"`
+	Network      *NetworkConfig `yaml:"network,omitempty"`
+	Requires     []string       `yaml:"requires,omitempty"`
+	Ports        []PortMapping  `yaml:"ports,omitempty"`
+	BuildRootfs  string         `yaml:"buildRootfs,omitempty"`
+	BuildScript  string         `yaml:"buildScript,omitempty"`
 	// PostInstall is a list of shell commands baked into a persistent rootfs
 	// right after the image is pulled. The final rootfs becomes BuildRootfs
 	// (global scope) so subsequent `silo run` invocations reuse it without
 	// refetching anything from the registry. The build step uses HostAccess
 	// networking without the proxy allowlist, so apt-get / npm install / etc.
 	// work regardless of the runtime's tighter allowlist.
-	PostInstall  []string          `yaml:"postInstall,omitempty"`
+	PostInstall []string `yaml:"postInstall,omitempty"`
 	// BuildScope records how BuildRootfs/BuildScript were produced so that
 	// `silo rebuild` picks the right target without guessing from the
 	// filesystem. Values: "global" (shared ~/.silo/builds/<tool>), "project"
 	// (pinned to BuildProjectRoot), or "" (legacy entries predating this field).
-	BuildScope       string `yaml:"buildScope,omitempty"`
-	BuildProjectRoot string `yaml:"buildProjectRoot,omitempty"`
+	BuildScope       string     `yaml:"buildScope,omitempty"`
+	BuildProjectRoot string     `yaml:"buildProjectRoot,omitempty"`
 	LSP              *LspConfig `yaml:"lsp,omitempty"`
 }
 

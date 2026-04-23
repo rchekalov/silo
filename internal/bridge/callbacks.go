@@ -85,7 +85,7 @@ func siloSimpleCallback(ctx unsafe.Pointer, cerr *C.char) {
 }
 
 //export siloHandleCallback
-func siloHandleCallback(ctx unsafe.Pointer, handle unsafe.Pointer, cerr *C.char) {
+func siloHandleCallback(ctx, handle unsafe.Pointer, cerr *C.char) {
 	id := uint64(uintptr(ctx))
 	ch := takeCall(id)
 	if ch == nil {

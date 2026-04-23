@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/shim"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/spf13/cobra"
 )
 
 var uninstallKeepImage bool

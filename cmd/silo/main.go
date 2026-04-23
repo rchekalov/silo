@@ -19,10 +19,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/rchekalov/silo/internal/commands"
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/version"
-	"golang.org/x/sys/unix"
 )
 
 var reservedNames = map[string]bool{

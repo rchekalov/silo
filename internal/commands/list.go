@@ -9,9 +9,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/spf13/cobra"
 )
 
 var listAvailable bool

@@ -258,7 +258,7 @@ func BakeTool(run BakeFunc, opts BakeOptions) (config.ToolDefinition, error) {
 	// — the installed package is silently lost from the baked rootfs.
 	script := strings.Join(opts.Steps, " && ") + " && sync"
 	if err := os.MkdirAll(filepath.Dir(opts.Target), 0o755); err != nil {
-		return opts.Def, fmt.Errorf("bake: prepare build dir: %v", err)
+		return opts.Def, fmt.Errorf("bake: prepare build dir: %w", err)
 	}
 
 	buildDef := opts.Def
@@ -273,7 +273,7 @@ func BakeTool(run BakeFunc, opts BakeOptions) (config.ToolDefinition, error) {
 	global := opts.Scope == "global"
 	exit, err := run(opts.Name, buildDef, "sh", []string{"-c", script}, opts.Target, global)
 	if err != nil {
-		return opts.Def, fmt.Errorf("bake: %v", err)
+		return opts.Def, fmt.Errorf("bake: %w", err)
 	}
 	if exit != 0 {
 		return opts.Def, fmt.Errorf("bake: setup exited %d", exit)
@@ -311,7 +311,7 @@ func (in *Installer) runPostInstall(def *config.ToolDefinition, name string) err
 		Scope:  "global",
 	})
 	if err != nil {
-		return fmt.Errorf("postInstall: %v", err)
+		return fmt.Errorf("postInstall: %w", err)
 	}
 	*def = updated
 	return nil

@@ -253,5 +253,7 @@ func pipePair() (*os.File, *os.File, error) {
 }
 
 // unused import silencer (sync always used above; keep strings+filepath just in case)
-var _ = strings.Contains
-var _ = filepath.Join
+var (
+	_ = strings.Contains
+	_ = filepath.Join
+)

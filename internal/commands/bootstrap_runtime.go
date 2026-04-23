@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/engine"
 	"github.com/rchekalov/silo/internal/runtime"
-	"github.com/spf13/cobra"
 )
 
 // bootstrapRuntimeCmd is a hidden entry point used by the release workflow to

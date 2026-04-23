@@ -215,8 +215,8 @@ func MatchDomain(domain, pattern string) bool {
 		return true
 	}
 	if strings.HasPrefix(pattern, "*.") {
-		suffix := pattern[1:]            // ".github.com"
-		apex := pattern[2:]               // "github.com"
+		suffix := pattern[1:] // ".github.com"
+		apex := pattern[2:]   // "github.com"
 		return strings.HasSuffix(domain, suffix) || domain == apex
 	}
 	return false

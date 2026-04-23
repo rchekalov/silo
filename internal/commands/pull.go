@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
@@ -16,7 +18,6 @@ import (
 	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/shim"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -135,12 +136,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 // toolPlan captures what has to happen for one tool to be ready.
 type toolPlan struct {
-	name              string
-	def               config.ToolDefinition // effective (global + override) definition
-	installGlobally   bool                  // tool is not in ~/.silo/config.yaml yet
-	needsPull         bool                  // rootfs cache is cold OR --force
-	needsRootfsStore  bool                  // pull will store rootfs (when cacheFor != nil)
-	shimConflicts     []shim.Conflict
+	name             string
+	def              config.ToolDefinition // effective (global + override) definition
+	installGlobally  bool                  // tool is not in ~/.silo/config.yaml yet
+	needsPull        bool                  // rootfs cache is cold OR --force
+	needsRootfsStore bool                  // pull will store rootfs (when cacheFor != nil)
+	shimConflicts    []shim.Conflict
 }
 
 func planProjectTools(
@@ -162,10 +163,10 @@ func planProjectTools(
 			return nil, errs.ToolNotFoundError(name)
 		}
 		p := toolPlan{
-			name:            name,
-			def:             def,
-			installGlobally: !installed,
-			needsPull:       true, // checked for real in executePlan
+			name:             name,
+			def:              def,
+			installGlobally:  !installed,
+			needsPull:        true, // checked for real in executePlan
 			needsRootfsStore: true,
 		}
 		if !installed {
@@ -324,4 +325,3 @@ func resolvedStart(start string) string {
 	}
 	return abs
 }
-

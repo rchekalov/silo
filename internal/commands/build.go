@@ -7,11 +7,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/engine"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/runtime"
-	"github.com/spf13/cobra"
 )
 
 var (

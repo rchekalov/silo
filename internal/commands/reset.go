@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/spf13/cobra"
+
+	"github.com/rchekalov/silo/internal/runtime"
 )
 
 var resetForce bool

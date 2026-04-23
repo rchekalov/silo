@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/rchekalov/silo/internal/runtime"
 	"gopkg.in/yaml.v3"
+
+	"github.com/rchekalov/silo/internal/runtime"
 )
 
 // ProjectConfigFilename is the per-project config file name that's walked up

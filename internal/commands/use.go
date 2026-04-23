@@ -7,12 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var useGlobal bool

@@ -57,7 +57,7 @@ func PercentEncodePath(path string) string {
 			b.WriteByte(c)
 			continue
 		}
-		b.WriteString(fmt.Sprintf("%%%02X", c))
+		fmt.Fprintf(&b, "%%%02X", c)
 	}
 	return b.String()
 }

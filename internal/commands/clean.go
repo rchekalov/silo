@@ -9,12 +9,13 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/runtime"
-	"github.com/spf13/cobra"
 )
 
 var (

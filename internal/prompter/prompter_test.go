@@ -4,6 +4,7 @@ package prompter
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -58,7 +59,7 @@ func TestPickDefault(t *testing.T) {
 
 func TestPickOutOfRange(t *testing.T) {
 	p := NewTerminalWith(strings.NewReader("99\n"), &bytes.Buffer{})
-	if _, err := p.Pick("which?", []string{"a", "b"}, 0); err != ErrInvalidChoice {
+	if _, err := p.Pick("which?", []string{"a", "b"}, 0); !errors.Is(err, ErrInvalidChoice) {
 		t.Fatalf("want ErrInvalidChoice got %v", err)
 	}
 }

@@ -3,9 +3,10 @@
 package commands
 
 import (
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/prompter"
 	"github.com/rchekalov/silo/internal/version"
-	"github.com/spf13/cobra"
 )
 
 // Prompter is the user-input abstraction shared by every command. Tests can

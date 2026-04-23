@@ -10,9 +10,10 @@ import (
 	"sort"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/runtime"
-	"gopkg.in/yaml.v3"
 )
 
 //go:embed registry.yaml

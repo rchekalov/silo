@@ -18,8 +18,8 @@ import (
 
 // Manager owns the shim directory and the silo binary path that shims call.
 type Manager struct {
-	dir         string
-	binaryPath  string
+	dir        string
+	binaryPath string
 }
 
 // NewManager returns a manager for shims under `dir` (empty → ~/.silo/bin/).
@@ -48,7 +48,7 @@ func (m *Manager) Dir() string { return m.dir }
 
 // Conflict is "shim X would collide with tool Y".
 type Conflict struct {
-	Shim   string
+	Shim      string
 	OtherTool string
 }
 

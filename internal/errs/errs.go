@@ -10,13 +10,13 @@ import (
 )
 
 var (
-	ErrToolNotFound        = errors.New("tool not found")
+	ErrToolNotFound         = errors.New("tool not found")
 	ErrToolAlreadyInstalled = errors.New("tool already installed")
-	ErrToolNotInstalled    = errors.New("tool not installed")
-	ErrConfig              = errors.New("configuration error")
-	ErrRuntime             = errors.New("runtime error")
-	ErrContainer           = errors.New("container error")
-	ErrPathNotFound        = errors.New("path not found")
+	ErrToolNotInstalled     = errors.New("tool not installed")
+	ErrConfig               = errors.New("configuration error")
+	ErrRuntime              = errors.New("runtime error")
+	ErrContainer            = errors.New("container error")
+	ErrPathNotFound         = errors.New("path not found")
 )
 
 // ToolNotFoundError returns a descriptive wrap of ErrToolNotFound for `name`.

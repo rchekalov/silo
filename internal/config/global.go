@@ -13,8 +13,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/rchekalov/silo/internal/runtime"
 	"gopkg.in/yaml.v3"
+
+	"github.com/rchekalov/silo/internal/runtime"
 )
 
 // GlobalConfig is ~/.silo/config.yaml — the list of installed tools.

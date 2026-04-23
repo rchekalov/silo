@@ -13,6 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
+	"golang.org/x/sys/unix"
+	"golang.org/x/term"
+
 	"github.com/rchekalov/silo/internal/bridge"
 	"github.com/rchekalov/silo/internal/cache"
 	"github.com/rchekalov/silo/internal/config"
@@ -20,9 +24,6 @@ import (
 	"github.com/rchekalov/silo/internal/network"
 	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/tools"
-	"github.com/schollz/progressbar/v3"
-	"golang.org/x/sys/unix"
-	"golang.org/x/term"
 )
 
 // ephemeralRunner is the mechanical backend used by ContainerEngine. It owns
@@ -601,11 +602,11 @@ func resolveOverrides(tool config.ToolDefinition, name string, pc *config.Projec
 	effectivePorts = tool.Ports
 	imageRef = tool.Image
 	if pc == nil {
-		return
+		return effectiveNet, effectivePorts, imageRef
 	}
 	o, ok := pc.Overrides[name]
 	if !ok {
-		return
+		return effectiveNet, effectivePorts, imageRef
 	}
 	if o.Network != nil {
 		effectiveNet = o.Network
@@ -616,7 +617,7 @@ func resolveOverrides(tool config.ToolDefinition, name string, pc *config.Projec
 	if o.Image != "" {
 		imageRef = o.Image
 	}
-	return
+	return effectiveNet, effectivePorts, imageRef
 }
 
 func buildEnv(tool config.ToolDefinition, toolName string, pc *config.ProjectConfig) []string {

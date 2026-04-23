@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/rchekalov/silo/internal/config"
-	"github.com/rchekalov/silo/internal/errs"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/rchekalov/silo/internal/config"
+	"github.com/rchekalov/silo/internal/errs"
 )
 
 var currentCmd = &cobra.Command{

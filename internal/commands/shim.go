@@ -7,10 +7,11 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/errs"
 	"github.com/rchekalov/silo/internal/shim"
-	"github.com/spf13/cobra"
 )
 
 var shimCmd = &cobra.Command{

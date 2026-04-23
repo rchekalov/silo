@@ -4,8 +4,8 @@ package bridge
 
 // MountSpec describes a single container mount. Use Block or Share helpers.
 type MountSpec struct {
-	Type        string   // "block" or "share"
-	Format      string   // "ext4" for block; empty for share
+	Type        string // "block" or "share"
+	Format      string // "ext4" for block; empty for share
 	Source      string
 	Destination string
 	Options     []string
