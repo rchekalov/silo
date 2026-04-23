@@ -25,7 +25,7 @@ name is given.`,
 
 func init() { addCommand(currentCmd) }
 
-func runCurrent(cmd *cobra.Command, args []string) error {
+func runCurrent(_ *cobra.Command, args []string) error {
 	global, err := config.LoadGlobalConfig()
 	if err != nil {
 		return err

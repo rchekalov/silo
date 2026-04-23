@@ -22,7 +22,7 @@ var uninstallCmd = &cobra.Command{
 	Use:   "uninstall <tool>",
 	Short: "Uninstall a tool and remove its shims",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		name := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {

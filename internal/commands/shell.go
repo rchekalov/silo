@@ -15,7 +15,7 @@ var shellCmd = &cobra.Command{
 	Use:   "shell <tool>",
 	Short: "Interactive shell in an ephemeral container",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
 			return err

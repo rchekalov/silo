@@ -14,7 +14,7 @@ import (
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check runtime readiness (kernel, initfs, bootstrap)",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		fmt.Println("Runtime:")
 		fmt.Printf("  kernel: %s %s\n", runtime.Kernel(), existsMarker(runtime.Kernel()))
 		fmt.Printf("  initfs: %s %s\n", runtime.Initfs(), existsMarker(runtime.Initfs()))

@@ -54,9 +54,8 @@ func init() {
 
 // cleanBucket captures one classified set of artifacts to remove.
 type cleanBucket struct {
-	label    string
-	entries  []cleanEntry
-	doRemove func(cleanEntry) error
+	label   string
+	entries []cleanEntry
 }
 
 type cleanEntry struct {
@@ -66,7 +65,7 @@ type cleanEntry struct {
 	removeFn    func() error
 }
 
-func runClean(cmd *cobra.Command, args []string) error {
+func runClean(_ *cobra.Command, args []string) error {
 	if cleanRootfsOnly && cleanCachesOnly {
 		return errs.Configf("--rootfs-only and --caches-only are mutually exclusive")
 	}
@@ -117,9 +116,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		buckets = append(buckets, b)
-		buckets = append(buckets, collectToolCacheBucket(projectTools))
-		buckets = append(buckets, collectStaleContainerBucket())
+		buckets = append(buckets, b, collectToolCacheBucket(projectTools), collectStaleContainerBucket())
 		// OCI image content (~/.silo/images) is left untouched for now — the
 		// bridge doesn't expose a delete API, and walking the content store
 		// blindly risks corrupting other tools' images.
@@ -349,9 +346,9 @@ func toSet(names []string) map[string]struct{} {
 // the apparent Size()).
 func dirSize(path string) uint64 {
 	var total uint64
-	_ = filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // walk errors are intentionally skipped — dirSize is best-effort
 		}
 		if info.IsDir() {
 			return nil

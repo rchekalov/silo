@@ -16,7 +16,7 @@ var resetForce bool
 var resetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Delete ~/.silo and start fresh",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		root := runtime.Root()
 		if !resetForce {
 			ok, err := Prompter.Confirm(

@@ -32,7 +32,7 @@ func TestHandleInterruptsTwoStages(t *testing.T) {
 	waitFor(t, &secondSeen, "second signal")
 }
 
-func TestHandleInterruptsCancel(t *testing.T) {
+func TestHandleInterruptsCancel(_ *testing.T) {
 	var fired atomic.Bool
 	cancel := HandleInterrupts(
 		func() { fired.Store(true) },

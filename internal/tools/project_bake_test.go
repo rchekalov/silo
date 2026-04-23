@@ -50,7 +50,7 @@ func TestApplyProjectPostInstallRunsAndPersistsHash(t *testing.T) {
 		global bool
 		cmd    []string
 	}
-	run := func(tool string, def config.ToolDefinition, cmd string, args []string, target string, global bool) (int32, error) {
+	run := func(_ string, _ config.ToolDefinition, cmd string, args []string, target string, global bool) (int32, error) {
 		seen.target = target
 		seen.global = global
 		seen.cmd = append([]string{cmd}, args...)
@@ -85,7 +85,7 @@ func TestApplyProjectPostInstallRunsAndPersistsHash(t *testing.T) {
 func TestApplyProjectPostInstallIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	runs := 0
-	run := func(tool string, def config.ToolDefinition, cmd string, args []string, target string, global bool) (int32, error) {
+	run := func(_ string, _ config.ToolDefinition, _ string, _ []string, target string, _ bool) (int32, error) {
 		runs++
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return -1, err
@@ -107,7 +107,7 @@ func TestApplyProjectPostInstallIdempotent(t *testing.T) {
 func TestApplyProjectPostInstallRebakesOnStepChange(t *testing.T) {
 	dir := t.TempDir()
 	runs := 0
-	run := func(tool string, def config.ToolDefinition, cmd string, args []string, target string, global bool) (int32, error) {
+	run := func(_ string, _ config.ToolDefinition, _ string, _ []string, target string, _ bool) (int32, error) {
 		runs++
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return -1, err

@@ -106,7 +106,7 @@ var configNetworkAllowCmd = &cobra.Command{
 	Use:   "allow <tool> <domain>",
 	Short: "Add a domain to the proxy allowlist",
 	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, root, err := loadOrInitProjectConfig()
 		if err != nil {
 			return err
@@ -120,7 +120,7 @@ var configNetworkDenyCmd = &cobra.Command{
 	Use:   "deny <tool> <domain>",
 	Short: "Add a domain to the proxy denylist",
 	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, root, err := loadOrInitProjectConfig()
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ var configNetworkRemoveCmd = &cobra.Command{
 	Use:   "remove <tool> <domain>",
 	Short: "Remove a domain from allow and deny lists",
 	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, root, err := loadOrInitProjectConfig()
 		if err != nil {
 			return err
@@ -149,7 +149,7 @@ var configNetworkRemoveCmd = &cobra.Command{
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Print the merged project config as YAML",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		ws, err := config.ResolveWorkspace("")
 		if err != nil {
 			return err

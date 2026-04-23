@@ -175,16 +175,16 @@ func TestTryDownloadRuntimeBundle_MissingChecksum(t *testing.T) {
 func TestReadExpectedSha256(t *testing.T) {
 	dir := t.TempDir()
 	sumPath := filepath.Join(dir, "x.sha256")
-	hex := strings.Repeat("ab", 32) // 64 hex chars
-	if err := os.WriteFile(sumPath, []byte(hex+"  bundle.tar.gz\n"), 0o644); err != nil {
+	sum := strings.Repeat("ab", 32) // 64 hex chars
+	if err := os.WriteFile(sumPath, []byte(sum+"  bundle.tar.gz\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := readExpectedSha256(sumPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != hex {
-		t.Fatalf("want %q, got %q", hex, got)
+	if got != sum {
+		t.Fatalf("want %q, got %q", sum, got)
 	}
 
 	// Invalid content should error so the caller can fall back.

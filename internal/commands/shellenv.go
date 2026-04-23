@@ -35,7 +35,7 @@ Usage — permanent (adds to your shell profile so every new shell picks it up):
 
 If no shell is supplied, silo detects it from $SHELL.`,
 	Args: cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		shell := detectShell(args)
 		fmt.Println(shellenvFor(shell))
 		return nil

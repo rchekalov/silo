@@ -18,7 +18,7 @@ var ideCmd = &cobra.Command{
 	Use:   "ide <vscode|zed|neovim>",
 	Short: "Generate IDE configuration for Silo LSP servers",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		ide := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {

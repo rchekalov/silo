@@ -21,7 +21,7 @@ var bootstrapRuntimeCmd = &cobra.Command{
 	Use:    "bootstrap-runtime",
 	Short:  "Download or build the silo runtime (vmlinux + initfs.ext4).",
 	Hidden: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if err := engine.EnsureRuntime(); err != nil {
 			return err
 		}

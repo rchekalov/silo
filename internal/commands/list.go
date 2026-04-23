@@ -20,7 +20,7 @@ var listAvailable bool
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List installed (or available) tools",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if listAvailable {
 			return printAvailable()
 		}

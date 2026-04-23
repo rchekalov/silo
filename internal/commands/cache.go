@@ -26,7 +26,7 @@ var cacheCmd = &cobra.Command{
 var cacheReportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Summarise ~/.silo disk usage (rootfs cache, per-tool, images, containers)",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		fmt.Println("~/.silo disk usage (on-disk / apparent):")
 
 		rootfs := cache.NewRootfs("")
@@ -85,7 +85,7 @@ var cacheReportCmd = &cobra.Command{
 var cacheListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show cache sizes (apparent + on-disk, rootfs + per-tool)",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		c := cache.NewRootfs("")
 		_, _, _ = c.Migrate()
 		entries, _ := c.Entries()
@@ -212,7 +212,7 @@ func init() {
 	addCommand(cacheCmd)
 }
 
-func runCacheCompress(cmd *cobra.Command, args []string) error {
+func runCacheCompress(_ *cobra.Command, _ []string) error {
 	c := cache.NewRootfs("")
 	_, _, _ = c.Migrate()
 	entries, err := c.Entries()
@@ -269,7 +269,7 @@ func runCacheCompress(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runCacheGC(cmd *cobra.Command, args []string) error {
+func runCacheGC(_ *cobra.Command, _ []string) error {
 	ws, err := config.ResolveWorkspace("")
 	if err != nil {
 		return err
@@ -528,7 +528,7 @@ func relTime(t time.Time) string {
 	}
 }
 
-func runCacheClean(cmd *cobra.Command, args []string) error {
+func runCacheClean(_ *cobra.Command, _ []string) error {
 	if cacheCleanSafe {
 		if cacheCleanAll || cacheCleanRootfs || cacheCleanContainers {
 			return errs.Configf("--safe is mutually exclusive with --all/--rootfs/--containers")

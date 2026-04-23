@@ -165,7 +165,7 @@ func resetTerminalIfNeeded() {
 	wantL := uint64(unix.ICANON | unix.ECHO | unix.ECHOE | unix.ISIG)
 	wantI := uint64(unix.ICRNL)
 	wantO := uint64(unix.OPOST)
-	if uint64(tios.Lflag)&wantL == wantL && uint64(tios.Iflag)&wantI == wantI && uint64(tios.Oflag)&wantO == wantO {
+	if tios.Lflag&wantL == wantL && tios.Iflag&wantI == wantI && tios.Oflag&wantO == wantO {
 		return
 	}
 	tios.Lflag |= unix.ICANON | unix.ECHO | unix.ECHOE | unix.ISIG

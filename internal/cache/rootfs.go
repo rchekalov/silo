@@ -85,7 +85,7 @@ func (c *Rootfs) Has(digest string, minSizeBytes uint64) bool {
 // Handles both hot (raw ext4) and cold (zstd) forms. A cold hit is promoted
 // back to hot after decompression so the next run gets the fast clonefile
 // path again.
-func (c *Rootfs) CloneTo(destination, digest string, minSizeBytes uint64) error {
+func (c *Rootfs) CloneTo(destination, digest string, _ uint64) error {
 	src := c.Path(digest, 0)
 	_ = os.Remove(destination)
 
@@ -366,7 +366,7 @@ func (c *Rootfs) Migrate() (migrated, removed int, err error) {
 		if !strings.Contains(stem, "_") {
 			continue
 		}
-		hex, _, ok := splitLastUnderscore(stem)
+		digestHex, _, ok := splitLastUnderscore(stem)
 		if !ok {
 			continue
 		}
@@ -375,7 +375,7 @@ func (c *Rootfs) Migrate() (migrated, removed int, err error) {
 		if serr != nil {
 			continue
 		}
-		groups[hex] = append(groups[hex], candidate{path: full, size: st.Size()})
+		groups[digestHex] = append(groups[digestHex], candidate{path: full, size: st.Size()})
 	}
 
 	for digestHex, cands := range groups {

@@ -60,6 +60,9 @@ linters:
         - unnamedResult
         # hugeParam is nice in theory, noisy in practice on config structs
         - hugeParam
+        # rangeValCopy fires constantly on map[string]config.ToolDefinition
+        # iteration (288 B value); none of these sites are hot paths.
+        - rangeValCopy
     errcheck:
       check-type-assertions: false
       check-blank: false
@@ -70,10 +73,13 @@ linters:
       - std-error-handling
     rules:
       # internal/bridge/ is a cgo wrapper — boilerplate trips several linters
+      # (govet/unsafeptr fires on the callback-id `unsafe.Pointer(uintptr(id))`
+      # idiom used ~20 times as the bridge's cgo calling convention).
       - path: internal/bridge/
         linters:
           - errcheck
           - gocritic
+          - govet
           - unused
       - path: _test\.go
         linters:

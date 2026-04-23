@@ -23,7 +23,7 @@ var (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Create .siloconf in the current directory",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
@@ -41,10 +41,6 @@ var initCmd = &cobra.Command{
 		default:
 			detected := tools.Detect(cwd)
 			if len(detected) > 0 && !initNoInteractive {
-				choices := make([]string, 0, len(detected))
-				for _, d := range detected {
-					choices = append(choices, fmt.Sprintf("%s (found %s)", d.Name, strings.Join(d.Markers, ", ")))
-				}
 				if ok, _ := Prompter.AskYesNo("Detected project tools. Include them in .siloconf?", true); ok {
 					for _, d := range detected {
 						selected = append(selected, d.Name)

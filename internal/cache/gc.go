@@ -81,7 +81,7 @@ func (c *Rootfs) GC(policy GCPolicy) (GCResult, error) {
 		for result.TotalAfter > policy.MaxTotalBytes && len(entries) > 0 {
 			victim := entries[0]
 			entries = entries[1:]
-			if err := c.RemoveByDigest(victim.Digest, 0); err != nil {
+			if rmErr := c.RemoveByDigest(victim.Digest, 0); rmErr != nil {
 				break
 			}
 			result.Evicted = append(result.Evicted, victim)
@@ -90,5 +90,5 @@ func (c *Rootfs) GC(policy GCPolicy) (GCResult, error) {
 		}
 	}
 
-	return result, nil
+	return result, nil //nolint:nilerr // remove failures abort size eviction but aren't fatal to GC
 }

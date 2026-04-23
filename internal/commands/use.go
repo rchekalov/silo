@@ -49,7 +49,7 @@ func init() {
 	addCommand(unuseCmd)
 }
 
-func runUse(cmd *cobra.Command, args []string) error {
+func runUse(_ *cobra.Command, args []string) error {
 	name, version, err := tools.ParseSpec(args[0])
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func runUse(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runUnuse(cmd *cobra.Command, args []string) error {
+func runUnuse(_ *cobra.Command, args []string) error {
 	name := args[0]
 	cfg, target, err := loadEditableConfig()
 	if err != nil {

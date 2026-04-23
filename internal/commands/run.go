@@ -41,7 +41,7 @@ func passthroughArgs() []string {
 	return strings.Split(raw, "\x1F")
 }
 
-func runRun(cmd *cobra.Command, args []string) error {
+func runRun(_ *cobra.Command, args []string) error {
 	passthrough := passthroughArgs()
 	total := time.Now()
 

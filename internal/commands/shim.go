@@ -23,7 +23,7 @@ var shimAddCmd = &cobra.Command{
 	Use:   "add <tool> <shim> [<shim>...]",
 	Short: "Add one or more shims to a tool",
 	Args:  cobra.MinimumNArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		tool := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
@@ -61,7 +61,7 @@ var shimRemoveCmd = &cobra.Command{
 	Use:   "remove <tool> <shim> [<shim>...]",
 	Short: "Remove one or more shims from a tool",
 	Args:  cobra.MinimumNArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		tool := args[0]
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
@@ -93,7 +93,7 @@ var shimListCmd = &cobra.Command{
 	Use:   "list <tool>",
 	Short: "Show shims for a tool",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
 			return err

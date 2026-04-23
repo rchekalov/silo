@@ -69,7 +69,7 @@ func gcMount(s MountSpec) (uint64, bool) {
 		cutoff := time.Now().Add(-s.MaxAge)
 		_ = filepath.Walk(s.HostPath, func(path string, fi os.FileInfo, werr error) error {
 			if werr != nil || fi.IsDir() {
-				return nil
+				return nil //nolint:nilerr // walk errors are intentionally skipped — cache GC is best-effort
 			}
 			t := fileAccessTime(fi)
 			if t.IsZero() || t.After(cutoff) {
@@ -102,7 +102,7 @@ func dirDiskSize(path string) uint64 {
 	var total uint64
 	_ = filepath.Walk(path, func(_ string, fi os.FileInfo, err error) error {
 		if err != nil || fi.IsDir() {
-			return nil
+			return nil //nolint:nilerr // walk errors are intentionally skipped — size probe is best-effort
 		}
 		total += fileBlocksBytes(fi)
 		return nil

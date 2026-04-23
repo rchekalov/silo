@@ -16,7 +16,7 @@ var lspCmd = &cobra.Command{
 	Use:   "lsp <tool>",
 	Short: "Run the LSP server for <tool> in a container and proxy stdio",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		cfg, err := config.LoadGlobalConfig()
 		if err != nil {
 			return err

@@ -45,7 +45,7 @@ func init() {
 	addCommand(installCmd)
 }
 
-func runInstall(cmd *cobra.Command, args []string) error {
+func runInstall(_ *cobra.Command, args []string) error {
 	toolName, version, err := tools.ParseSpec(args[0])
 	if err != nil {
 		return err

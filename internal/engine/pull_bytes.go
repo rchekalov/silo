@@ -18,22 +18,22 @@ func duBytes(root string) int64 {
 		return 0
 	}
 	var total int64
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
 		if err != nil {
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}
-			return nil
+			return nil //nolint:nilerr // walk errors are intentionally skipped — duBytes is best-effort
 		}
 		if d.IsDir() {
 			return nil
 		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
+		info, ierr := d.Info()
+		if ierr != nil {
+			return nil //nolint:nilerr // d.Info errors are skipped — duBytes is best-effort
 		}
 		if sys, ok := info.Sys().(*syscall.Stat_t); ok {
-			total += int64(sys.Blocks) * 512
+			total += sys.Blocks * 512
 			return nil
 		}
 		total += info.Size()

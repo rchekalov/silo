@@ -53,7 +53,7 @@ func init() {
 	addCommand(addCmd)
 }
 
-func runAdd(cmd *cobra.Command, args []string) error {
+func runAdd(_ *cobra.Command, args []string) error {
 	if len(args) == 0 && addStep == "" {
 		return errs.Configf("nothing to add — pass package names or --step <shell>")
 	}
