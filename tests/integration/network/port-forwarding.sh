@@ -19,7 +19,7 @@ cat > "$WORKDIR/.siloconf" <<'EOF'
 overrides:
   python:
     network:
-      host_access: true
+      hostAccess: true
     ports:
       - host: 3456
         guest: 3456

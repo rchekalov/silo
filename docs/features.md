@@ -127,14 +127,14 @@ Tool caches (pip, npm, cargo, go mod, deno) are mounted from host, persisted acr
 ## Network
 
 - Default: no network access (full isolation)
-- Per-tool: `network.host_access: true` + optional proxy allowlist
+- Per-tool: `network.hostAccess: true` + optional proxy allowlist
 - DNS: configurable nameservers (defaults to 1.1.1.1, 8.8.8.8)
 - Proxy allowlists with wildcard domains (e.g., `*.github.com`)
 
 ## Port Forwarding
 
 - `ports` in `.siloconf` overrides or tool config — maps host ports to guest ports
-- Ports automatically enable networking (no separate `host_access` needed)
+- Ports automatically enable networking (no separate `hostAccess` needed)
 - Application-layer TCP relay, started after container boot
 - Example `.siloconf`:
   ```yaml

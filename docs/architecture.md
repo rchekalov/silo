@@ -143,7 +143,7 @@ User overrides via `~/.silo/registry.yaml` (same format, takes precedence).
 Default: no network access (full isolation).
 
 Per-tool configuration:
-- `host_access: true` — enables networking with `host.silo.internal` DNS pointing to host
+- `hostAccess: true` — enables networking with `host.silo.internal` DNS pointing to host
 - `proxy.allowlist` — restrict outbound to specific domains (wildcard support)
 - Container gets DNS resolver at gateway IP
 - Port forwarding via `ports` config
