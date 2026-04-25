@@ -16,7 +16,7 @@ EOF
 
 echo "Testing: host.silo.internal resolves when hostAccess is enabled"
 
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import socket
 ip = socket.gethostbyname('host.silo.internal')
 with open('/workspace/.output', 'w') as f:
@@ -33,7 +33,7 @@ echo "PASS: host.silo.internal resolves to $OUTPUT"
 echo "Testing: DNS resolvers are configured with hostAccess"
 
 rm -f "$WORKDIR/.output"
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 with open('/etc/resolv.conf') as f:
     content = f.read()
 has_dns = '1.1.1.1' in content or '8.8.8.8' in content

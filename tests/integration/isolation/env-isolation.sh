@@ -11,7 +11,7 @@ WORKDIR=$(mktemp -d)
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import os
 val = os.environ.get('SILO_TEST_SECRET', 'not-found')
 with open('/workspace/.output', 'w') as f:
@@ -34,7 +34,7 @@ passEnv:
   - SILO_TEST_SECRET
 EOF
 
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import os
 val = os.environ.get('SILO_TEST_SECRET', 'not-found')
 with open('/workspace/.output', 'w') as f:

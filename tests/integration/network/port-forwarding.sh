@@ -28,7 +28,7 @@ EOF
 echo "Testing: port forwarding from host to VM"
 
 cd "$WORKDIR"
-"$SILO_BIN" run python -- -m http.server "$PORT" &
+"$SILO_BIN" run python -m http.server "$PORT" &
 SILO_PID=$!
 
 # Wait for server to become ready

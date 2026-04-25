@@ -14,7 +14,7 @@ for tool in python node go; do
   fi
 
   echo "Testing: $tool --version"
-  "$SILO_BIN" run "$tool" -- --version >/dev/null 2>&1
+  "$SILO_BIN" run "$tool" --version >/dev/null 2>&1
   echo "PASS: $tool runs successfully"
   ((TESTED++))
 done

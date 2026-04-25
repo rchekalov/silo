@@ -17,11 +17,11 @@ EOF
 echo "Testing: pip package persists across invocations via workspace mount"
 
 # Install a small package (needs network, install to workspace)
-(cd "$WORKDIR" && "$SILO_BIN" run python --shim pip -- install --target /workspace/.pkg requests) >/dev/null 2>&1
+(cd "$WORKDIR" && "$SILO_BIN" run --shim pip python install --target /workspace/.pkg requests) >/dev/null 2>&1
 
 # Verify it's importable in the same workspace context
 rm -f "$WORKDIR/.output"
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import sys; sys.path.insert(0, '/workspace/.pkg')
 import requests
 with open('/workspace/.output', 'w') as f:

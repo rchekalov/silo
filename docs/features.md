@@ -6,9 +6,9 @@ Complete list of what silo can do today (v0.4.0).
 
 Every tool runs in its own Apple Container micro-VM. No access to SSH keys, cloud credentials, or other host data.
 
-- `silo run python -- script.py` — run a command in an ephemeral VM
+- `silo run python script.py` — run a command in an ephemeral VM (silo flags before the tool, command after; legacy `silo run python -- script.py` still works)
 - `silo shell python` — interactive shell inside the container
-- `silo python script.py` — shorthand (auto-expands to `silo run python -- script.py`)
+- `silo python script.py` — shorthand (auto-expands to `silo run python script.py`)
 - `--timing` flag on run — shows config/runtime/VM timing breakdown
 
 ## Tool Management
@@ -147,7 +147,7 @@ Tool caches (pip, npm, cargo, go mod, deno) are mounted from host, persisted acr
 
 ## Project-Scoped Builds
 
-- `silo build <tool> -- <cmd>` — run a setup command to build a customized rootfs
+- `silo build <tool> <cmd>` — run a setup command to build a customized rootfs (legacy `silo build <tool> -- <cmd>` still works)
   - Default: project-local (`.silo/<tool>/rootfs.ext4`)
   - `--global` flag: system-wide (`~/.silo/builds/<tool>/rootfs.ext4`)
 - `silo build <tool> --rerun` — re-run the stored build script

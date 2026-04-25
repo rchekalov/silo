@@ -43,7 +43,7 @@ if [ ! -f "$WORKDIR/.silo/python/rootfs.ext4" ]; then
 fi
 
 # 4. The baked rootfs must carry both the pinned python and pyright.
-probe=$(cd "$WORKDIR" && "$SILO_BIN" run python --shim sh -- -c \
+probe=$(cd "$WORKDIR" && "$SILO_BIN" run --shim sh python -c \
     'command -v pyright-langserver && python3 --version' 2>&1)
 if ! echo "$probe" | grep -q pyright-langserver; then
     echo "FAIL: pyright-langserver missing from project rootfs" >&2

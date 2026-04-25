@@ -164,6 +164,6 @@ Add `--backend apple|docker` flag to:
 1. `swift test` — existing tests pass unchanged
 2. `make sign-debug` — builds successfully with new module
 3. `silo install python --backend docker` — pulls image via Docker
-4. `silo run python -- python3 -c "print('hello')"` with `backend: docker` in config — runs in Docker container
-5. `silo run python --timing -- --version` — works with both backends
+4. `silo run python python3 -c "print('hello')"` with `backend: docker` in config — runs in Docker container
+5. `silo run --timing python --version` — works with both backends
 6. Verify backend resolution: global default → per-tool → per-project override

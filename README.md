@@ -90,8 +90,8 @@ silo install python
 python --version
 python script.py
 
-# Or run explicitly
-silo run python -- script.py
+# Or run explicitly (silo flags before the tool, command after)
+silo run python script.py
 
 # Interactive shell inside the sandbox
 silo shell python
@@ -106,7 +106,7 @@ silo list --available
 silo uninstall python
 ```
 
-Silo also supports shorthand syntax — `silo python script.py` expands to `silo run python -- script.py`, and `silo npm test` resolves the shim and expands to `silo run node --shim npm -- test`.
+Silo also supports shorthand syntax — `silo python script.py` expands to `silo run python script.py`, and `silo npm test` resolves the shim and expands to `silo run node --shim npm test`. The legacy `--` separator (`silo run python -- script.py`) is still accepted.
 
 ## Running Claude Code in isolation
 
@@ -439,7 +439,7 @@ overrides:
 EOF
 
 # 2. Install dependencies and persist them
-silo setup node -- npm install
+silo build node npm install
 
 # 3. Run the dev server — accessible at http://localhost:5173
 npm run dev
@@ -468,7 +468,7 @@ overrides:
 EOF
 
 # 2. Install from requirements.txt and persist
-silo setup python -- pip install -r requirements.txt
+silo build python pip install -r requirements.txt
 
 # 3. Future runs have all packages available
 python manage.py runserver
@@ -478,30 +478,32 @@ Or use `silo init` to auto-detect your project and generate a `.siloconf` intera
 
 ### Project-local vs global
 
-By default, `silo setup` saves the image to `.silo/<tool>/rootfs.ext4` in the project directory (requires a `.siloconf` in the project root). Use `--global` for packages you want everywhere:
+By default, `silo build` saves the image to `.silo/<tool>/rootfs.ext4` in the project directory (requires a `.siloconf` in the project root). Use `--global` for packages you want everywhere:
 
 ```bash
 # Project-local (default) — only this project gets these deps
-silo setup node -- npm install
+silo build node npm install
 
 # Global — available in all projects
-silo setup python --global -- pip install poetry
+silo build --global python pip install poetry
 
 # Project-local builds on top of global
 # (global has poetry, project adds project-specific deps)
-silo setup python -- poetry install
+silo build python poetry install
 ```
 
 ### Other uses
 
 ```bash
 # Install system packages or browser binaries
-silo setup node -- npx playwright install --with-deps
+silo build node npx playwright install --with-deps
 
 # Reset a customized environment
-silo setup node --reset
-silo setup python --reset --global
+silo build node --remove
+silo build --global python --remove
 ```
+
+The legacy `--` separator (`silo build node -- npm install`) is still accepted.
 
 Rebuild later from stored scripts:
 
@@ -661,7 +663,7 @@ User runs: python script.py
          │
          ▼
 Shim (~/.silo/bin/python)
-         │  calls: silo run python --shim python -- script.py
+         │  calls: silo run --shim python python script.py
          ▼
 silo run
          │  1. Loads ~/.silo/config.yaml (tool definition)
@@ -690,11 +692,11 @@ VM destroyed after exit (ephemeral mode)
 |---|---|
 | `silo install <tool>` | Install a tool from the registry or custom image |
 | `silo uninstall <tool>` | Remove an installed tool and its shims |
-| `silo run <tool> -- <args>` | Run a command in an ephemeral sandbox |
+| `silo run <tool> [args...]` | Run a command in an ephemeral sandbox |
 | `silo shell <tool>` | Interactive shell inside a sandbox |
 | `silo list [--available]` | Show installed or all available tools |
 | `silo init` | Auto-detect project and generate `.siloconf` (experimental) |
-| `silo setup <tool> -- <cmd>` | Customize a tool's VM and persist changes |
+| `silo build <tool> <cmd>` | Customize a tool's VM and persist changes |
 | `silo rebuild [<tool>]` | Re-run stored setup scripts |
 | `silo shim <tool> <add\|remove\|list>` | Add, remove, or list shims for a tool |
 | `silo lsp <tool>` | Start a sandboxed language server |
@@ -724,7 +726,7 @@ All artifacts are cached at `~/.silo/`. Subsequent tool installs only pull the O
 Use `--timing` to see where time is spent:
 
 ```bash
-$ silo run python --timing -- --version
+$ silo run --timing python --version
 [silo] config loaded: 5ms
 [silo] runtime ready: 6ms
 [silo] ephemeral completed: 1200ms

@@ -6,7 +6,7 @@ SILO_BIN="${SILO_BIN:-silo}"
 echo "Testing: running a non-existent tool gives clear error"
 
 set +e
-OUTPUT=$("$SILO_BIN" run nonexistent-tool-xyz -- --version 2>&1)
+OUTPUT=$("$SILO_BIN" run nonexistent-tool-xyz --version 2>&1)
 EXIT_CODE=$?
 set -e
 

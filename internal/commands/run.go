@@ -15,7 +15,7 @@ import (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run <tool> [-- <args>...]",
+	Use:   "run <tool> [args...]",
 	Short: "Run a command in an ephemeral container",
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runRun,
@@ -24,6 +24,13 @@ var runCmd = &cobra.Command{
 var (
 	runShim   string
 	runTiming bool
+)
+
+// Flag tables consumed by cmd/silo/main.go to split argv into silo flags +
+// tool name + pass-through. Keep in sync with the Flags() registrations below.
+var (
+	RunValueFlags = []string{"shim"}
+	RunBoolFlags  = []string{"timing"}
 )
 
 func init() {

@@ -24,7 +24,7 @@ var (
 )
 
 var buildCmd = &cobra.Command{
-	Use:                   "build <tool> [-- <command>...]",
+	Use:                   "build <tool> [command...]",
 	Aliases:               []string{"setup", "rebuild"},
 	Short:                 "Build a persistent rootfs by running a setup command",
 	DisableFlagsInUseLine: true,
@@ -32,13 +32,22 @@ var buildCmd = &cobra.Command{
 anything done by the setup command becomes the new starting point for later
 'silo run <tool>' invocations in this project (or globally with --global).
 
-  silo build node -- npm i -g typescript
+  silo build node npm i -g typescript
   silo build node --rerun              # re-run the stored command
   silo build node --remove             # delete the stored rootfs
-  silo build --all --rerun             # refresh every tool with a stored script`,
+  silo build --all --rerun             # refresh every tool with a stored script
+
+The legacy '--' separator (silo build node -- npm install) is still accepted.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: runBuild,
 }
+
+// Flag tables consumed by cmd/silo/main.go to split argv into silo flags +
+// tool name + pass-through. Keep in sync with the Flags() registrations below.
+var (
+	BuildValueFlags = []string{"script", "setup"}
+	BuildBoolFlags  = []string{"global", "remove", "rerun", "all", "reset"}
+)
 
 func init() {
 	buildCmd.Flags().BoolVar(&buildGlobal, "global", false, "persist in ~/.silo/builds/<tool> (instead of .silo/<tool> next to .siloconf)")
@@ -124,7 +133,7 @@ func runBuildAll(cfg *config.GlobalConfig) error {
 		}
 	}
 	if len(targets) == 0 {
-		return errs.Configf("no tools have a stored build script; run `silo build <tool> -- <cmd>` first")
+		return errs.Configf("no tools have a stored build script; run `silo build <tool> <cmd>` first")
 	}
 	for _, tool := range targets {
 		def := cfg.Tools[tool]
@@ -169,7 +178,7 @@ func resolveBuildCommand(tool string, def config.ToolDefinition, passthrough []s
 		return "sh", []string{"-c", script}, nil
 	}
 	if len(passthrough) == 0 {
-		return "", nil, fmt.Errorf("build requires a command after `--`, e.g. silo build %s -- npm i -g typescript", tool)
+		return "", nil, fmt.Errorf("build requires a command, e.g. silo build %s npm i -g typescript", tool)
 	}
 	return passthrough[0], passthrough[1:], nil
 }

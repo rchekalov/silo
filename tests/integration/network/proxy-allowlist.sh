@@ -19,7 +19,7 @@ EOF
 
 echo "Testing: allowlisted host is reachable through the proxy"
 
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import urllib.request
 urllib.request.urlopen('https://api.github.com', timeout=15)
 with open('/workspace/.output', 'w') as f:
@@ -37,7 +37,7 @@ echo "Testing: non-allowlisted host is blocked by the proxy"
 
 rm -f "$WORKDIR/.output"
 set +e
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import urllib.request, sys
 try:
     urllib.request.urlopen('https://example.com', timeout=15)

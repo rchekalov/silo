@@ -45,7 +45,7 @@ fi
 echo "PASS: project rootfs present"
 
 echo "Testing: baked rootfs has kotlin binary"
-if ! "$SILO_BIN" run claude-code --shim sh -- -c 'command -v kotlin >/dev/null && kotlin -version 2>&1 | head -1' | grep -qi kotlin; then
+if ! "$SILO_BIN" run --shim sh claude-code -c 'command -v kotlin >/dev/null && kotlin -version 2>&1 | head -1' | grep -qi kotlin; then
   echo "FAIL: kotlin not reachable inside claude-code"
   exit 1
 fi

@@ -10,7 +10,7 @@ trap cleanup EXIT
 echo "Testing: network is not accessible by default"
 
 set +e
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import urllib.request, sys
 try:
     urllib.request.urlopen('https://example.com', timeout=5)

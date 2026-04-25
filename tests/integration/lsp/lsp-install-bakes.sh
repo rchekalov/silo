@@ -16,7 +16,7 @@ if [ ! -f "$HOME/.silo/builds/python/rootfs.ext4" ]; then
 fi
 
 # 2. Running the tool against the baked rootfs must resolve pyright-langserver.
-output=$("$SILO_BIN" run python --shim sh -- -c 'command -v pyright-langserver' 2>&1)
+output=$("$SILO_BIN" run --shim sh python -c 'command -v pyright-langserver' 2>&1)
 if ! echo "$output" | grep -q pyright-langserver; then
     echo "FAIL: pyright-langserver not on PATH in baked rootfs" >&2
     echo "output: $output" >&2

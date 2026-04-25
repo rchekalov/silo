@@ -9,7 +9,7 @@ WORKDIR=$(mktemp -d)
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import os, sys
 
 sensitive = [

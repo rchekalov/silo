@@ -8,7 +8,7 @@ cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
 echo "Testing: multiple arguments pass through correctly"
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import sys
 with open('/workspace/.output', 'w') as f:
     f.write(str(len(sys.argv)))
@@ -23,7 +23,7 @@ echo "PASS: argument count correct"
 
 echo "Testing: arguments with spaces"
 rm -f "$WORKDIR/.output"
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import sys
 with open('/workspace/.output', 'w') as f:
     f.write(sys.argv[1])
@@ -38,7 +38,7 @@ echo "PASS: spaced arguments preserved"
 
 echo "Testing: arguments with special characters"
 rm -f "$WORKDIR/.output"
-(cd "$WORKDIR" && "$SILO_BIN" run python -- -c "
+(cd "$WORKDIR" && "$SILO_BIN" run python -c "
 import sys
 with open('/workspace/.output', 'w') as f:
     f.write(sys.argv[1])

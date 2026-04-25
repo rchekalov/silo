@@ -20,7 +20,7 @@ Use this skill when the user wants to:
 
 ## Mental model
 
-- `silo install <tool>` puts a shim in `~/.silo/bin/`; afterwards `python script.py` transparently runs `silo run python -- script.py` inside a VM.
+- `silo install <tool>` puts a shim in `~/.silo/bin/`; afterwards `python script.py` transparently runs `silo run python script.py` inside a VM.
 - `.siloconf` (YAML, walks up from cwd; global fallback at `~/.silo/siloconf`) controls what the sandbox can see: `passEnv`, `passFiles`, `overrides` (per-tool `network`, `ports`, `env`, `image`).
 - Each run is a fresh VM. Packages installed with `pip install foo` inside a run vanish when it exits — use `silo setup` or per-tool cache mounts to persist state.
 - Rootfs is cached per OCI digest at `~/.silo/rootfs-cache/` (APFS clonefile for sub-second starts). Cold entries can be zstd-compressed to save ~4× disk.
@@ -36,9 +36,9 @@ Use this skill when the user wants to:
 | Install from custom image | `silo install mydb --image postgres:15 --shim psql,pg_dump --network` |
 | List registry / installed | `silo list --available` / `silo list` |
 | Uninstall (also frees rootfs + image) | `silo uninstall <tool>` *(add `--keep-image` to retain OCI blobs)* |
-| Run a command | `silo run python -- script.py` or just `python script.py` (via shim) |
+| Run a command | `silo run python script.py` or just `python script.py` (via shim) |
 | Interactive shell | `silo shell python` |
-| Run with timing breakdown | `silo run python --timing -- --version` |
+| Run with timing breakdown | `silo run --timing python --version` |
 
 ### Project configuration
 
@@ -57,10 +57,10 @@ Each `silo run` is a fresh VM — `pip install`/`npm install` inside a run disap
 
 | Intent | Command |
 |---|---|
-| Install project deps once | `silo setup node -- npm install` |
-| Global (all projects) | `silo setup python --global -- pip install poetry` |
-| Re-run stored setup | `silo rebuild <tool>` |
-| Reset a customised env | `silo setup node --reset` |
+| Install project deps once | `silo build node npm install` |
+| Global (all projects) | `silo build --global python pip install poetry` |
+| Re-run stored setup | `silo build <tool> --rerun` |
+| Reset a customised env | `silo build node --remove` |
 
 ### Disk usage and cache management
 
@@ -180,7 +180,7 @@ overrides:
         allow: [pypi.org, "*.pythonhosted.org"]
     ports: [{host: 8000, guest: 8000}]
 EOF
-silo setup python -- pip install -r requirements.txt      # bakes deps into rootfs
+silo build python pip install -r requirements.txt        # bakes deps into rootfs
 python manage.py runserver                                # run normally via shim
 ```
 
@@ -204,7 +204,7 @@ silo clean                          # project-scoped: nuke rootfs + tool caches 
 
 ### Fixing a slow start
 
-First `silo install` downloads a kernel + Swift toolchain + cross-compiles vminitd (~5 min, one-time). After that, runs with a warm cache take ~600ms. Run `silo run python --timing -- --version` to see the breakdown.
+First `silo install` downloads a kernel + Swift toolchain + cross-compiles vminitd (~5 min, one-time). After that, runs with a warm cache take ~600ms. Run `silo run --timing python --version` to see the breakdown.
 
 ## Troubleshooting
 

@@ -19,9 +19,10 @@ User → silo CLI (Go)
 ### cmd/silo (binary)
 
 Thin CLI layer using cobra. Responsibilities:
-- argv[0] shim detection: when invoked as `python`, transforms to `silo run python --shim python -- <args>`
-- Tool shorthand: `silo python foo.py` → `silo run python -- foo.py`
-- Shim shorthand: `silo npx foo` → `silo run node --shim npx -- foo`
+- argv[0] shim detection: when invoked as `python`, transforms to `silo run --shim python python <args...>`
+- Tool shorthand: `silo python foo.py` → `silo run python foo.py`
+- Shim shorthand: `silo npx foo` → `silo run --shim npx node foo`
+- Docker-style positional split for `silo run` / `silo build`: silo flags before the tool name; everything after the tool is the inner command, forwarded via `_SILO_PASSTHROUGH` (`\x1F`-delimited). Known silo flags appearing after the tool are hoisted to the front so `silo build node --remove` keeps working. The legacy `--` separator is still accepted: if `--` appears anywhere in argv, the older strip-after-`--` path takes over.
 - Terminal restoration on startup (cooked mode)
 - Delegates all logic to `internal/` packages
 
@@ -84,7 +85,7 @@ Swift library wrapping Apple's Containerization framework:
 ### Ephemeral execution (silo run)
 
 ```
-silo run python -- -c "print('hello')"
+silo run python -c "print('hello')"
 
 1. Load GlobalConfig → find python tool definition
 2. Find project .siloconf (walk-up) + merge global siloconf

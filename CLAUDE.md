@@ -45,7 +45,8 @@ make test                            # go test ./... with CGO_LDFLAGS set
 silo list                            # show installed tools
 silo list --available                # show all registry tools
 silo install python@3.12             # install a specific version (globally)
-silo run python --timing -- -c "print('hello')"
+silo run --timing python -c "print('hello')"   # silo flags before the tool name; everything after is the inner command
+                                                # legacy `silo run python -- -c "..."` still works
 silo config ports add node 3000:3000 # add port forwarding to .siloconf
 silo config network allow node '*.npmjs.org'  # allow a domain
 silo config show                      # show merged project config
@@ -64,11 +65,12 @@ silo clean --rootfs-only              # narrow to rootfs cache only
 silo clean --force                    # non-interactively remove shared artifacts too
 
 # Persistent customization (was `setup` + `rebuild`)
-silo build node -- npm i -g typescript  # bake a persistent rootfs on top of the tool's image
+silo build node npm i -g typescript     # bake a persistent rootfs on top of the tool's image
 silo build node --rerun                 # re-run the stored build script
 silo build --all --rerun                # refresh every tool with a stored script
 silo build node --remove                # delete the stored rootfs
                                         # `silo setup` / `silo rebuild` remain as deprecated aliases
+                                        # legacy `silo build node -- npm i -g typescript` still works
 
 # Project-scoped package additions (for claude-code and other tools)
 silo add kotlin                         # JDK 17 + Kotlin into claude-code (project-scoped bake)
@@ -188,7 +190,7 @@ internal/
 
   commands/                          # cobra subcommands
     root.go                          # root command + addCommand registry
-    run.go                           # silo run <tool> -- <args>
+    run.go                           # silo run <tool> [args...]
     shell.go                         # silo shell <tool>
     install.go                       # silo install <tool>[@<version>]
     uninstall.go                     # silo uninstall <tool>
@@ -280,7 +282,7 @@ cmd/silo (binary)
                       └─ Apple Containerization framework
 ```
 
-- **cmd/silo**: entry point. Detects argv[0] shim dispatch (`python` symlink → `silo run python --shim python`), rewrites tool-shorthand argv (`silo python foo.py` → `silo run python -- foo.py`), and parses passthrough via `_SILO_PASSTHROUGH` env var (\x1F-delimited).
+- **cmd/silo**: entry point. Detects argv[0] shim dispatch (`python` symlink → `silo run python --shim python`), rewrites tool-shorthand argv (`silo python foo.py` → `silo run python foo.py`), and applies the Docker-style positional split for `silo run` / `silo build` (silo flags before the tool name; everything after the tool is the inner command, forwarded via `_SILO_PASSTHROUGH` env var, \x1F-delimited). Legacy `--` separator is still accepted.
 - **internal/commands**: cobra commands. Thin glue — load config, call engine/tools/cache, format output.
 - **internal/engine**: `ContainerEngine` orchestrator. `EnsureRuntime` (bootstrap), `RunEphemeral`, `RunLSP`, `RunSetup`, `PullImage`. Wraps bridge calls with config-aware setup (mounts, env, ports, network).
 - **internal/bridge**: cgo surface. C callbacks from Swift → Go channels → synchronous-looking Go API. Opaque handle types (`Manager`, `Container`, `Image`, `Process`).
@@ -309,9 +311,11 @@ shim (or silo run) → cmd/silo/main.go
       → Container.Stop → Manager.Delete
 ```
 
-**Shim detection (argv[0]):** [cmd/silo/main.go:77-102](cmd/silo/main.go:77) — when invoked as `python` via a shim symlink, resolves the shim to its tool and transforms args to `silo run <tool> --shim <shim> -- <args>`.
+**Shim detection (argv[0]):** [cmd/silo/main.go](cmd/silo/main.go) `tryShimDispatch` — when invoked as `python` via a shim symlink, resolves the shim to its tool and transforms args to `silo run <tool> --shim <shim> <args...>`.
 
-**Tool shorthand:** [cmd/silo/main.go:109-151](cmd/silo/main.go:109) — `silo python script.py` is rewritten to `silo run python -- script.py` before cobra parses.
+**Tool shorthand:** [cmd/silo/main.go](cmd/silo/main.go) `transformArgs` — `silo python script.py` is rewritten to `silo run python script.py` before cobra parses.
+
+**Pass-through split:** For `silo run` / `silo build`, `transformArgs` walks argv, hoists known silo flags (e.g. `--timing`, `--rerun`, `--shim`) to the front of the tool positional, and treats everything after the tool as the inner command (forwarded via `_SILO_PASSTHROUGH`). The legacy `--` separator still works: if `--` appears in argv, the older strip-after-`--` path takes over verbatim.
 
 ### Rootfs Caching
 
@@ -388,6 +392,12 @@ overrides:
   python:
     env:
       PYTHONPATH: /workspace/src
+  node:
+    # Per-project resource bumps — a Vue/Vite build needs ≥ 6 GB of guest RAM.
+    # Zero / unset means "use the registry/global value"; non-zero wins.
+    cpus: 4
+    memoryMB: 6144
+    rootfsSizeMB: 4096
   claude-code:
     # Project-specific bake steps — appended to the registry's postInstall.
     # `silo sync` produces <projectRoot>/.silo/claude-code/rootfs.ext4.
@@ -400,6 +410,8 @@ overrides:
 ```
 
 The project's tool set is the union of `tools:` and the keys of `overrides:`. `silo sync` uses this set to decide what to install/pull; `silo clean` uses it to decide what artifacts to reclaim.
+
+Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`. All are merged onto the registry/global definition by `config.ApplyOverride` (and the runtime engine), so a project can raise memory or CPUs without touching `~/.silo/config.yaml`.
 
 ### Global siloconf (~/.silo/siloconf)
 
@@ -453,7 +465,7 @@ rm -rf ~/.silo/containers/silo-*
 ### Performance debugging
 Use `--timing` on the run command:
 ```bash
-silo run python --timing -- --version
+silo run --timing python --version
 ```
 
 ### Full reset
