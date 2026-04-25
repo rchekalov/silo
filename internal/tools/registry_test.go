@@ -127,7 +127,7 @@ func TestEntryToToolDefinitionDefaults(t *testing.T) {
 		t.Fatalf("err=%v ok=%v", err, ok)
 	}
 	def := e.ToToolDefinition("")
-	if def.CPUs != 2 || def.MemoryMB != 512 || def.Workdir != "/workspace" {
+	if def.CPUs != 2 || def.MemoryMB != 2048 || def.Workdir != "/workspace" {
 		t.Fatalf("defaults: %+v", def)
 	}
 }

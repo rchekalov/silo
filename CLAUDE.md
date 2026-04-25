@@ -403,7 +403,7 @@ tools:
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     cpus: 2
-    memory_mb: 512
+    memory_mb: 2048
     rootfs_size_mb: 2048
 ```
 
@@ -490,7 +490,7 @@ overrides:
         guest: 3000
 ```
 
-Without `memoryMB: 6144` the global default of 512 MB OOM-kills the build with no diagnostic.
+Without `memoryMB: 6144` the global default of 2048 MB is still cramped for a real Vite/Vue build — visible as Node's `Ineffective mark-compacts near heap limit` failure.
 
 **Python — pin 3.11, install pyright via LSP, scope `ANTHROPIC_API_KEY` to one tool.**
 
@@ -537,7 +537,7 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 | `env` | map[string]string | nil | Default env vars |
 | `passEnv` | []string | nil | Host env vars copied into the guest when set (e.g. `ANTHROPIC_API_KEY` for claude-code). Merged with the project-level `passEnv` at runtime. |
 | `cpus` | int | 2 | VM CPU count |
-| `memory_mb` | uint64 | 512 | VM memory |
+| `memory_mb` | uint64 | 2048 | VM memory |
 | `rootfs_size_mb` | uint64 | 2048 | Root filesystem size |
 | `network` | *NetworkConfig | nil | Host access, proxy allowlist |
 | `requires` | []string | nil | Tool dependencies |

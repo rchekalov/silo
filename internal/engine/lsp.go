@@ -48,7 +48,7 @@ func (r *ephemeralRunner) RunLSP(opts RunLSPOptions) (int32, error) {
 	// Language servers are memory-hungry — pyright-langserver loads all of
 	// typeshed plus the project via a node runtime, gopls tracks module
 	// dependency graphs, rust-analyzer mirrors the whole crate graph. The
-	// tool's default 512 MB (good enough for a quick `silo run`) silently
+	// tool's default 2048 MB (good enough for a quick `silo run`) silently
 	// OOMs a fresh LSP VM, so lift the floor here without touching the
 	// stored definition.
 	applyLspResourceFloors(&opts.Tool)

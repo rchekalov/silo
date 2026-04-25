@@ -13,7 +13,7 @@ import (
 const (
 	DefaultWorkdir      = "/workspace"
 	DefaultCPUs         = 2
-	DefaultMemoryMB     = 512
+	DefaultMemoryMB     = 2048
 	DefaultRootfsSizeMB = 2048
 )
 
