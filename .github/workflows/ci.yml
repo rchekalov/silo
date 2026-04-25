@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select latest Xcode (for Swift 6.2+)
         uses: maxim-lobanov/setup-xcode@v1
@@ -25,7 +25,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
@@ -52,7 +52,7 @@ jobs:
 
       - name: Upload signed debug artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: silo-debug-${{ github.sha }}
           path: |
@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select latest Xcode (for Swift 6.2+)
         uses: maxim-lobanov/setup-xcode@v1
@@ -82,7 +82,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true

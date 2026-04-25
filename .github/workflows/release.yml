@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract version from tag
         id: meta
@@ -35,7 +35,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
@@ -73,7 +73,7 @@ jobs:
           ls -la dist
 
       - name: Upload prebuilt tarball artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: silo-prebuilt-arm64
           path: dist/
@@ -95,7 +95,7 @@ jobs:
           ls -la runtime-dist
 
       - name: Upload runtime bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: silo-runtime-arm64
           path: runtime-dist/
@@ -110,13 +110,13 @@ jobs:
 
     steps:
       - name: Download prebuilt tarball artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: silo-prebuilt-arm64
           path: dist
 
       - name: Download runtime bundle artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: silo-runtime-arm64
           path: runtime-dist
@@ -165,12 +165,12 @@ jobs:
       # release-specific version/url/sha256 in. This keeps the tap structurally
       # in sync with source — no drift when the formula shape changes.
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: source
 
       - name: Checkout tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: rchekalov/homebrew-apps
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
