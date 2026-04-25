@@ -351,9 +351,34 @@ Without caching, every invocation unpacks OCI layers to ext4 (~25s). With cachin
   containers/          # Container rootfs (managed by bridge, transient)
   rootfs-cache/        # Cached unpacked rootfs ext4 files
   builds/              # Global build artifacts (setup rootfs)
+  baked/               # Per-recipe project bakes, content-addressed
+    <recipe-hash>/
+      rootfs.ext4
+      manifest.json    # {tool, image, steps, createdAt}
+  projects/            # Per-machine project metadata
+    <id>/              # id = explicit `project_id:` from .siloconf, else sha256(realpath)[:16]
+      meta.json        # {path, tools, tool_to_recipe, lastUsedAt, ...}
   cache/               # Tool caches (pip, npm, cargo, go mod, deno)
   logs/                # Reserved
 ```
+
+`silo sync` writes a project-customized rootfs (when the project pins a
+non-default image, or adds postInstall steps) to `~/.silo/baked/<hash>/`,
+keyed by sha256(image + postInstall steps). Multiple projects with the same
+recipe share one ext4 file; `mv`-ing a project never invalidates its bake.
+
+Per-project metadata under `~/.silo/projects/<id>/meta.json` lets `silo
+projects ls` enumerate cached state and `silo clean --orphaned` reap projects
+whose path no longer exists plus baked rootfs entries no live project still
+references. Set `project_id:` in `.siloconf` to make state survive `mv`
+unconditionally; without it, smart adoption recovers most cases by matching
+the .siloconf content fingerprint of an orphaned meta against the project's
+current .siloconf bytes.
+
+User-driven `silo build <tool> -- <cmd>` outputs still write to
+`<projectRoot>/.silo/<tool>/rootfs.ext4` (relocating that path is a separate
+follow-up); the engine's tier-1 cascade prefers the auto-baked rootfs when
+both are present.
 
 ## Configuration
 
@@ -411,7 +436,8 @@ overrides:
     # tool inheriting it via the top-level passEnv at the file root.
     passEnv: [ANTHROPIC_API_KEY]
     # Project-specific bake steps — appended to the registry's postInstall.
-    # `silo sync` produces <projectRoot>/.silo/claude-code/rootfs.ext4.
+    # `silo sync` produces ~/.silo/baked/<recipe-hash>/rootfs.ext4
+    # (content-addressed; multiple projects with the same recipe share it).
     postInstall:
       - apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless kotlin && rm -rf /var/lib/apt/lists/*
     # Cache mounts added on top of the registry's; dedup is by guest path.

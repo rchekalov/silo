@@ -8,25 +8,30 @@ import (
 	"testing"
 
 	"github.com/rchekalov/silo/internal/config"
+	"github.com/rchekalov/silo/internal/runtime"
 )
 
-// ApplyProjectPostInstall uses runtime.ProjectRootfs to compute the target
-// path, which reads from <projectRoot>/.silo/<tool>/rootfs.ext4. The hash
-// sidecar is written next to it on success.
+// ApplyProjectPostInstall writes its rootfs to ~/.silo/baked/<recipe-hash>/
+// (content-addressed). Tests t.Setenv("HOME", ...) so the path resolves
+// under a temp dir and survives concurrent test runs.
 
 func TestApplyProjectPostInstallNoOpOnEmpty(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	called := false
 	run := func(string, config.ToolDefinition, string, []string, string, bool) (int32, error) {
 		called = true
 		return 0, nil
 	}
-	baked, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, nil, dir)
+	baked, hash, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, nil, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if baked {
 		t.Fatal("empty steps should not bake")
+	}
+	if hash != "" {
+		t.Fatalf("empty steps should produce no recipe hash, got %q", hash)
 	}
 	if called {
 		t.Fatal("BakeFunc should not be called for empty steps")
@@ -34,16 +39,18 @@ func TestApplyProjectPostInstallNoOpOnEmpty(t *testing.T) {
 }
 
 func TestApplyProjectPostInstallRequiresProjectRoot(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	run := func(string, config.ToolDefinition, string, []string, string, bool) (int32, error) {
 		return 0, nil
 	}
-	_, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step"}, "")
+	_, _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step"}, "")
 	if err == nil {
 		t.Fatal("expected error without project root")
 	}
 }
 
-func TestApplyProjectPostInstallRunsAndPersistsHash(t *testing.T) {
+func TestApplyProjectPostInstallRunsAndWritesManifest(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	var seen struct {
 		target string
@@ -62,27 +69,30 @@ func TestApplyProjectPostInstallRunsAndPersistsHash(t *testing.T) {
 	}
 
 	steps := []string{"apt-get install kotlin"}
-	baked, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{Image: "node:22-slim"}, steps, dir)
+	baked, hash, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{Image: "node:22-slim"}, steps, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !baked {
 		t.Fatal("first bake should return baked=true")
 	}
+	if hash == "" {
+		t.Fatal("baked call should return a non-empty recipe hash")
+	}
 	if seen.global {
 		t.Fatal("project bake should invoke run with global=false")
 	}
-	wantTarget := filepath.Join(dir, ".silo", "claude-code", "rootfs.ext4")
+	wantTarget := runtime.BakedRootfs(hash)
 	if seen.target != wantTarget {
 		t.Fatalf("target=%q want %q", seen.target, wantTarget)
 	}
-	// Hash sidecar exists.
-	if _, err := os.Stat(wantTarget + ".sha256"); err != nil {
-		t.Fatalf("hash sidecar missing: %v", err)
+	if _, err := os.Stat(runtime.BakedManifest(hash)); err != nil {
+		t.Fatalf("manifest missing: %v", err)
 	}
 }
 
 func TestApplyProjectPostInstallIdempotent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	runs := 0
 	run := func(_ string, _ config.ToolDefinition, _ string, _ []string, target string, _ bool) (int32, error) {
@@ -95,7 +105,7 @@ func TestApplyProjectPostInstallIdempotent(t *testing.T) {
 	steps := []string{"apt-get install kotlin"}
 
 	for i := 0; i < 3; i++ {
-		if _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, steps, dir); err != nil {
+		if _, _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, steps, dir); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,6 +115,7 @@ func TestApplyProjectPostInstallIdempotent(t *testing.T) {
 }
 
 func TestApplyProjectPostInstallRebakesOnStepChange(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	runs := 0
 	run := func(_ string, _ config.ToolDefinition, _ string, _ []string, target string, _ bool) (int32, error) {
@@ -115,10 +126,10 @@ func TestApplyProjectPostInstallRebakesOnStepChange(t *testing.T) {
 		return 0, os.WriteFile(target, []byte("mock-rootfs"), 0o644)
 	}
 
-	if _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step-a"}, dir); err != nil {
+	if _, _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step-a"}, dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step-a", "step-b"}, dir); err != nil {
+	if _, _, err := ApplyProjectPostInstall(run, "claude-code", config.ToolDefinition{}, []string{"step-a", "step-b"}, dir); err != nil {
 		t.Fatal(err)
 	}
 	if runs != 2 {

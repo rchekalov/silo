@@ -474,10 +474,14 @@ func (r *ephemeralRunner) acquireContainer(
 	cfg bridge.ContainerConfig,
 	opts *RunEphemeralOptions,
 ) (*bridge.Container, error) {
-	// 1. Project-local rootfs
+	// 1. Project-local rootfs (auto-bake under ~/.silo/baked/<hash>/ resolved
+	// via the project meta, or `silo build` output at <project>/.silo/<tool>/).
 	if opts.ProjectRoot != "" {
-		p := runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)
-		if _, statErr := os.Stat(p); statErr == nil {
+		explicitID := ""
+		if opts.ProjectConfig != nil {
+			explicitID = opts.ProjectConfig.ProjectID
+		}
+		if p := runtime.ResolveProjectRootfs(opts.ProjectRoot, opts.ToolName, explicitID); p != "" {
 			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg)
 			if err == nil {
 				return ctr, nil

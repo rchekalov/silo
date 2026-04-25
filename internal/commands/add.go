@@ -12,6 +12,7 @@ import (
 
 	"github.com/rchekalov/silo/internal/config"
 	"github.com/rchekalov/silo/internal/errs"
+	"github.com/rchekalov/silo/internal/runtime"
 	"github.com/rchekalov/silo/internal/tools"
 )
 
@@ -185,5 +186,23 @@ func bakeAfterAdd(tool string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Baking %s...\n", tool)
-	return bakeProjectPostInstallFor(tool, ws.Merged, global, ws.ProjectRoot)
+	hash, err := bakeProjectPostInstallFor(tool, ws.Merged, global, ws.ProjectRoot)
+	if err != nil {
+		return err
+	}
+	// Mirror `silo sync`: persist meta so this tool shows up in `silo projects`
+	// and the engine's tier-1 lookup can find the just-baked rootfs.
+	meta, id, err := runtime.LoadOrCreateMeta(ws.Merged.ProjectID, ws.ProjectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not load project state: %v\n", err)
+		return nil
+	}
+	updates := map[string]string{}
+	if hash != "" {
+		updates[tool] = hash
+	}
+	if err := runtime.Touch(id, meta, []string{tool}, updates); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update project state: %v\n", err)
+	}
+	return nil
 }

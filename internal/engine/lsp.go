@@ -238,8 +238,11 @@ func (r *ephemeralRunner) acquireContainerForLSP(
 	opts RunLSPOptions,
 ) (*bridge.Container, error) {
 	if opts.ProjectRoot != "" {
-		p := runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)
-		if _, statErr := os.Stat(p); statErr == nil {
+		explicitID := ""
+		if opts.ProjectConfig != nil {
+			explicitID = opts.ProjectConfig.ProjectID
+		}
+		if p := runtime.ResolveProjectRootfs(opts.ProjectRoot, opts.ToolName, explicitID); p != "" {
 			ctr, err := r.tryCachedRootfs(mgr, id, imageRef, p, cfg)
 			if err == nil {
 				return ctr, nil
@@ -303,7 +306,11 @@ func warnIfLspBakeMissing(opts RunLSPOptions, imageRef string) {
 			opts.ToolName, opts.ToolName)
 	}
 	if imageRef != "" && imageRef != opts.Tool.Image && opts.ProjectRoot != "" {
-		if _, err := os.Stat(runtime.ProjectRootfs(opts.ProjectRoot, opts.ToolName)); err != nil {
+		explicitID := ""
+		if opts.ProjectConfig != nil {
+			explicitID = opts.ProjectConfig.ProjectID
+		}
+		if runtime.ResolveProjectRootfs(opts.ProjectRoot, opts.ToolName, explicitID) == "" {
 			fmt.Fprintf(os.Stderr,
 				"hint: project pins %s but no project rootfs exists; "+
 					"run `silo sync` so the LSP matches the pinned version.\n",

@@ -72,6 +72,13 @@ type ProjectConfig struct {
 	Mount     *MountConfig            `yaml:"mount,omitempty"`
 	Overrides map[string]ToolOverride `yaml:"overrides,omitempty"`
 	Cache     *CacheConfig            `yaml:"cache,omitempty"`
+	// ProjectID is an optional stable identifier (e.g. UUID/ULID) for this
+	// project. Without it, silo keys per-machine state under a hash of the
+	// project's current absolute path, which means renaming or moving the
+	// project directory orphans that state (smart-adoption recovers most
+	// cases by matching .siloconf content). Set this once and silo's state
+	// survives `mv` unconditionally. Mirrors compose.yaml's `name:` field.
+	ProjectID string `yaml:"project_id,omitempty"`
 }
 
 // ProjectTools returns the sorted, deduplicated set of tools required by this
@@ -209,6 +216,10 @@ func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
 		Tools:     dedupMerge(base.Tools, c.Tools),
 		PassEnv:   dedupMerge(base.PassEnv, c.PassEnv),
 		PassFiles: dedupMerge(base.PassFiles, c.PassFiles),
+		ProjectID: c.ProjectID,
+	}
+	if out.ProjectID == "" {
+		out.ProjectID = base.ProjectID
 	}
 	if c.Mount != nil {
 		mc := *c.Mount

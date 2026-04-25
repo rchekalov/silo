@@ -129,12 +129,29 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// project bake against the pinned image produces a language server that
 	// matches `silo run`'s toolchain. Both paths are idempotent via a
 	// hash sidecar next to the project rootfs.
+	recipeHashes := map[string]string{}
 	if merged != nil && root != "" {
 		for _, tool := range projectTools {
-			if err := bakeProjectForTool(tool, merged, global, root); err != nil {
+			hash, err := bakeProjectForTool(tool, merged, global, root)
+			if err != nil {
 				failed = append(failed, fmt.Sprintf("%s (bake): %v", tool, err))
 				fmt.Fprintf(os.Stderr, "error: %s (bake): %v\n", tool, err)
+				continue
 			}
+			if hash != "" {
+				recipeHashes[tool] = hash
+			}
+		}
+		// Persist project meta so `silo projects` can enumerate this project,
+		// `silo clean --orphaned` can detect deletions/moves, and the engine's
+		// tier-1 lookup can resolve tool -> baked rootfs without re-deriving
+		// the recipe hash. Touch is best-effort: a write failure here doesn't
+		// invalidate the bakes that just succeeded.
+		meta, id, err := runtime.LoadOrCreateMeta(merged.ProjectID, root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not load project state: %v\n", err)
+		} else if err := runtime.Touch(id, meta, projectTools, recipeHashes); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update project state: %v\n", err)
 		}
 	}
 
@@ -299,33 +316,33 @@ func rootfsCacheHit(def config.ToolDefinition) (bool, error) {
 // `silo add` keeps calling `bakeProjectPostInstallFor` directly because it
 // always operates on the existing install's image (adding packages, not
 // changing the version).
-func bakeProjectForTool(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) error {
+func bakeProjectForTool(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) (string, error) {
 	if merged == nil || root == "" {
-		return nil
+		return "", nil
 	}
 	globalDef, installed := global.Tools[tool]
 	if !installed {
 		// `silo sync`'s planner installs globally before this runs, so a
 		// missing entry here indicates a planner error. Surface rather
 		// than silently skip the bake.
-		return fmt.Errorf("tool %q is not installed; install aborted earlier", tool)
+		return "", fmt.Errorf("tool %q is not installed; install aborted earlier", tool)
 	}
 	def, _ := resolvePullDef(tool, merged, global)
 	if def.Image != globalDef.Image {
 		e := engine.NewContainerEngine(global)
 		if err := e.EnsureRuntime(); err != nil {
-			return err
+			return "", err
 		}
-		baked, err := tools.ApplyProjectFullBake(bakeAdapter(e), tool, def, def.PostInstall, root)
+		baked, recipeHash, err := tools.ApplyProjectFullBake(bakeAdapter(e), tool, def, def.PostInstall, root)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if baked {
-			fmt.Printf("  %-20s  baked project rootfs at %s (pinned %s)\n", tool, runtime.ProjectRootfs(root, tool), def.Image)
+			fmt.Printf("  %-20s  baked project rootfs at %s (pinned %s)\n", tool, runtime.BakedRootfs(recipeHash), def.Image)
 		} else {
 			fmt.Printf("  %-20s  project rootfs up-to-date (pinned %s)\n", tool, def.Image)
 		}
-		return nil
+		return recipeHash, nil
 	}
 	return bakeProjectPostInstallFor(tool, merged, global, root)
 }
@@ -333,36 +350,36 @@ func bakeProjectForTool(tool string, merged *config.ProjectConfig, global *confi
 // bakeProjectPostInstallFor runs a project-scoped bake for a single tool
 // when the merged .siloconf contains extra postInstall steps. Shared between
 // `silo sync` and `silo add` so both surface identical behaviour.
-func bakeProjectPostInstallFor(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) error {
+func bakeProjectPostInstallFor(tool string, merged *config.ProjectConfig, global *config.GlobalConfig, root string) (string, error) {
 	if merged == nil || root == "" {
-		return nil
+		return "", nil
 	}
 	override, ok := merged.Overrides[tool]
 	if !ok || len(override.PostInstall) == 0 {
-		return nil
+		return "", nil
 	}
 	if _, installed := global.Tools[tool]; !installed {
 		// Project config references a tool that isn't globally installed.
 		// The `silo sync` planner handles install first, so this is only
 		// reachable when a caller (e.g. `silo add`) invokes the bake for a
 		// tool the user hasn't installed yet. Surface the mismatch.
-		return fmt.Errorf("tool %q is not installed; run `silo install %s` first", tool, tool)
+		return "", fmt.Errorf("tool %q is not installed; run `silo install %s` first", tool, tool)
 	}
 	def, _ := resolvePullDef(tool, merged, global)
 	e := engine.NewContainerEngine(global)
 	if err := e.EnsureRuntime(); err != nil {
-		return err
+		return "", err
 	}
-	baked, err := tools.ApplyProjectPostInstall(bakeAdapter(e), tool, def, override.PostInstall, root)
+	baked, recipeHash, err := tools.ApplyProjectPostInstall(bakeAdapter(e), tool, def, override.PostInstall, root)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if baked {
-		fmt.Printf("  %-20s  baked project rootfs at %s\n", tool, runtime.ProjectRootfs(root, tool))
+		fmt.Printf("  %-20s  baked project rootfs at %s\n", tool, runtime.BakedRootfs(recipeHash))
 	} else {
 		fmt.Printf("  %-20s  project rootfs up-to-date\n", tool)
 	}
-	return nil
+	return recipeHash, nil
 }
 
 func resolvedStart(start string) string {

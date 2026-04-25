@@ -25,6 +25,7 @@ var (
 	cleanShared     bool
 	cleanKeepShared bool
 	cleanDryRun     bool
+	cleanOrphaned   bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -49,6 +50,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanShared, "shared", false, "alias for --force (explicit about removing shared)")
 	cleanCmd.Flags().BoolVar(&cleanKeepShared, "keep-shared", false, "non-interactively skip artifacts shared with other tools")
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "print the plan without acting")
+	cleanCmd.Flags().BoolVar(&cleanOrphaned, "orphaned", false, "remove project state and baked rootfs entries no project still references")
 	addCommand(cleanCmd)
 }
 
@@ -68,6 +70,15 @@ type cleanEntry struct {
 func runClean(_ *cobra.Command, args []string) error {
 	if cleanRootfsOnly && cleanCachesOnly {
 		return errs.Configf("--rootfs-only and --caches-only are mutually exclusive")
+	}
+	if cleanOrphaned {
+		if len(args) > 0 {
+			return errs.Configf("--orphaned does not take a path argument")
+		}
+		if cleanRootfsOnly || cleanCachesOnly {
+			return errs.Configf("--orphaned is exclusive with --rootfs-only / --caches-only")
+		}
+		return runCleanOrphaned()
 	}
 
 	start := ""
@@ -117,9 +128,13 @@ func runClean(_ *cobra.Command, args []string) error {
 			return err
 		}
 		buckets = append(buckets, b, collectToolCacheBucket(projectTools), collectStaleContainerBucket())
+		if psb := collectProjectStateBucket(merged, root); len(psb.entries) > 0 {
+			buckets = append(buckets, psb)
+		}
 		// OCI image content (~/.silo/images) is left untouched for now — the
 		// bridge doesn't expose a delete API, and walking the content store
-		// blindly risks corrupting other tools' images.
+		// blindly risks corrupting other tools' images. Unreferenced baked
+		// rootfs entries are reachable via `silo clean --orphaned`.
 	}
 
 	printBuckets(buckets)
@@ -263,6 +278,127 @@ func collectToolCacheBucket(projectTools []string) cleanBucket {
 		})
 	}
 	return b
+}
+
+// collectProjectStateBucket returns a bucket containing this project's
+// ~/.silo/projects/<id>/ directory, if one exists. After this is removed the
+// project drops out of `silo projects`, and any baked rootfs entries it
+// uniquely referenced become orphans for `silo clean --orphaned` to reap.
+func collectProjectStateBucket(merged *config.ProjectConfig, projectRoot string) cleanBucket {
+	b := cleanBucket{label: "Project state"}
+	if projectRoot == "" || merged == nil {
+		return b
+	}
+	id := runtime.ProjectID(merged.ProjectID, projectRoot)
+	dir := runtime.ProjectStateDir(id)
+	size := dirSize(dir)
+	if size == 0 {
+		return b
+	}
+	d := dir
+	b.entries = append(b.entries, cleanEntry{
+		description: fmt.Sprintf("project state (%s)", dir),
+		size:        size,
+		removeFn:    func() error { return os.RemoveAll(d) },
+	})
+	return b
+}
+
+// runCleanOrphaned reaps two classes of unreachable artifacts: project state
+// dirs whose recorded path no longer exists on disk, and baked rootfs dirs
+// that no live project meta references. The two are independent — a project
+// can be live but still orphan a bake by switching to a different recipe;
+// conversely an orphaned project state will pull its bake-only references
+// into the unreferenced bucket.
+func runCleanOrphaned() error {
+	projects, err := runtime.ListProjects()
+	if err != nil {
+		return err
+	}
+	var buckets []cleanBucket
+
+	op := cleanBucket{label: "Orphaned project state"}
+	liveRecipes := map[string]struct{}{}
+	for _, p := range projects {
+		if _, statErr := os.Stat(p.Meta.Path); statErr == nil {
+			for _, h := range p.Meta.ToolToRecipe {
+				liveRecipes[h] = struct{}{}
+			}
+			continue
+		}
+		dir := runtime.ProjectStateDir(p.ID)
+		size := dirSize(dir)
+		d := dir
+		op.entries = append(op.entries, cleanEntry{
+			description: fmt.Sprintf("%s (last seen at %s)", p.ID, p.Meta.Path),
+			size:        size,
+			removeFn:    func() error { return os.RemoveAll(d) },
+		})
+	}
+	buckets = append(buckets, op)
+
+	bakes, err := runtime.ListBakedHashes()
+	if err != nil {
+		return err
+	}
+	ub := cleanBucket{label: "Unreferenced baked rootfs"}
+	for _, h := range bakes {
+		if _, live := liveRecipes[h]; live {
+			continue
+		}
+		bakeDir := runtime.BakedDir(h)
+		size := dirSize(bakeDir)
+		d := bakeDir
+		ub.entries = append(ub.entries, cleanEntry{
+			description: h,
+			size:        size,
+			removeFn:    func() error { return os.RemoveAll(d) },
+		})
+	}
+	buckets = append(buckets, ub)
+
+	totalEntries := 0
+	for _, b := range buckets {
+		totalEntries += len(b.entries)
+	}
+	if totalEntries == 0 {
+		fmt.Println("Nothing to do — no orphaned project state or unreferenced baked rootfs.")
+		return nil
+	}
+
+	printBuckets(buckets)
+
+	if cleanDryRun {
+		fmt.Println("(dry-run) no changes applied")
+		return nil
+	}
+
+	if !cleanForce && !cleanShared {
+		ok, err := Prompter.AskYesNo("Remove orphaned entries?", false)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	totalFreed := uint64(0)
+	for _, b := range buckets {
+		for _, e := range b.entries {
+			if e.removeFn == nil {
+				continue
+			}
+			if err := e.removeFn(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %s: %v\n", e.description, err)
+				continue
+			}
+			totalFreed += e.size
+		}
+	}
+	fmt.Printf("\nReclaimed %.1f MiB.\n", float64(totalFreed)/1024/1024)
+	return nil
 }
 
 func collectStaleContainerBucket() cleanBucket {
