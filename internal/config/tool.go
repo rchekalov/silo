@@ -198,6 +198,41 @@ func ApplyOverride(def ToolDefinition, o ToolOverride) ToolDefinition {
 	if len(o.Cache) > 0 {
 		out.Cache = mergeCacheMounts(def.Cache, o.Cache)
 	}
+	if o.CPUs != 0 {
+		out.CPUs = o.CPUs
+	}
+	if o.MemoryMB != 0 {
+		out.MemoryMB = o.MemoryMB
+	}
+	if o.RootfsSizeMB != 0 {
+		out.RootfsSizeMB = o.RootfsSizeMB
+	}
+	if o.Workdir != "" {
+		out.Workdir = o.Workdir
+	}
+	if len(o.PassEnv) > 0 {
+		// Append override entries to the base, deduping while preserving order.
+		seen := make(map[string]struct{}, len(def.PassEnv)+len(o.PassEnv))
+		merged := make([]string, 0, len(def.PassEnv)+len(o.PassEnv))
+		for _, k := range def.PassEnv {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			merged = append(merged, k)
+		}
+		for _, k := range o.PassEnv {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			merged = append(merged, k)
+		}
+		out.PassEnv = merged
+	}
+	if o.LSP != nil {
+		out.LSP = mergeLspConfig(def.LSP, o.LSP)
+	}
 	return out
 }
 

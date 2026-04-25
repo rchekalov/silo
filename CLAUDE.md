@@ -398,7 +398,18 @@ overrides:
     cpus: 4
     memoryMB: 6144
     rootfsSizeMB: 4096
+    # workdir: /app           # uncomment if your project mounts /app instead of /workspace
+  python:
+    # Per-tool LSP override — pin a language-server version, add an LSP-only cache,
+    # tweak LSP env. Nil sub-fields keep the base; non-empty sub-fields win.
+    lsp:
+      install: npm i -g pyright@1.1.350
+      env:
+        PYRIGHT_LOG: verbose
   claude-code:
+    # Per-tool passEnv — only this tool sees ANTHROPIC_API_KEY, instead of every
+    # tool inheriting it via the top-level passEnv at the file root.
+    passEnv: [ANTHROPIC_API_KEY]
     # Project-specific bake steps — appended to the registry's postInstall.
     # `silo sync` produces <projectRoot>/.silo/claude-code/rootfs.ext4.
     postInstall:
@@ -411,7 +422,77 @@ overrides:
 
 The project's tool set is the union of `tools:` and the keys of `overrides:`. `silo sync` uses this set to decide what to install/pull; `silo clean` uses it to decide what artifacts to reclaim.
 
-Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`. All are merged onto the registry/global definition by `config.ApplyOverride` (and the runtime engine), so a project can raise memory or CPUs without touching `~/.silo/config.yaml`.
+Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `lsp`. Merge semantics:
+
+- **Scalars** (`image`, `workdir`, `cpus`, `memoryMB`, `rootfsSizeMB`): non-empty / non-zero overlay wins.
+- **Maps** (`env`): per-key overlay-wins on top of base.
+- **Lists** (`postInstall`): base first, overlay appended.
+- **Lists** (`passEnv`): base + overlay deduped, order preserved. Use this for credentials scoped to one tool (e.g. only `claude-code` should see `ANTHROPIC_API_KEY`); the top-level `passEnv:` covers all tools.
+- **Cache mounts**: deduplicated by guest path (overlay host wins).
+- **Ports**: overlay replaces the list wholesale if set.
+- **Network**: overlay replaces the struct wholesale if set.
+- **LSP**: nested merge — non-empty overlay `command` / `install` win; `env` map merges per-key; `cache` dedups by guest path.
+
+Not overridable in `.siloconf` (registry / engine concerns): `shims`, `requires`, `buildRootfs`, `buildScript`, `buildScope`, `buildProjectRoot`. Shims are host-side CLI factories registered globally; `requires` is a registry dependency declaration; the `build*` family is engine-managed persistent rootfs state.
+
+#### Worked examples
+
+**Node — Vite/Vue/Next dev server that needs ≥ 6 GB RAM and host-only npm registry.**
+
+```yaml
+tools: [node]
+overrides:
+  node:
+    image: docker.io/library/node:20-bookworm
+    cpus: 4
+    memoryMB: 6144
+    rootfsSizeMB: 4096
+    env:
+      NODE_OPTIONS: "--max-old-space-size=5120"
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - registry.npmjs.org
+          - "*.npmjs.org"
+    ports:
+      - host: 5173       # Vite default
+        guest: 5173
+      - host: 3000       # Next/Nuxt default
+        guest: 3000
+```
+
+Without `memoryMB: 6144` the global default of 512 MB OOM-kills the build with no diagnostic.
+
+**Python — pin 3.11, install pyright via LSP, scope `ANTHROPIC_API_KEY` to one tool.**
+
+```yaml
+tools: [python]
+passEnv: [GITHUB_TOKEN]              # forwarded to every tool
+passFiles: [.pypirc]
+overrides:
+  python:
+    image: docker.io/library/python:3.11-slim
+    workdir: /app                    # monorepo mounts source at /app
+    env:
+      PYTHONPATH: /app/src
+    network:
+      hostAccess: true
+      proxy:
+        allow: [pypi.org, "*.pythonhosted.org"]
+    ports:
+      - host: 8000
+        guest: 8000
+    lsp:
+      install: npm i -g pyright@1.1.350
+      env:
+        PYRIGHT_LOG: verbose
+  claude-code:
+    passEnv: [ANTHROPIC_API_KEY]     # scoped: only claude-code sees this
+    memoryMB: 4096
+```
+
+`silo lsp python` now boots with the pinned pyright version; `silo run claude-code` is the only tool that sees `ANTHROPIC_API_KEY` (other tools never have it in their env).
 
 ### Global siloconf (~/.silo/siloconf)
 

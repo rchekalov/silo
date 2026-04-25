@@ -158,6 +158,7 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 	maintenanceBeforeRun()
 	id := fmt.Sprintf("silo-%s-%s", opts.ToolName, shortID())
 
+	applyResourceOverrides(&opts.Tool, opts.ToolName, opts.ProjectConfig)
 	effectiveNet, effectivePorts, imageRef := resolveOverrides(opts.Tool, opts.ToolName, opts.ProjectConfig)
 	hasPorts := len(effectivePorts) > 0
 	hasProxy := effectiveNet != nil && effectiveNet.Proxy != nil && len(effectiveNet.Proxy.Allow) > 0
@@ -318,6 +319,7 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 	id := fmt.Sprintf("silo-setup-%s-%s", opts.ToolName, shortID())
 
+	applyResourceOverrides(&opts.Tool, opts.ToolName, opts.ProjectConfig)
 	applySetupResourceFloors(&opts.Tool)
 
 	mgr, err := r.newManager(true)
@@ -592,6 +594,65 @@ func (r *ephemeralRunner) createOrRetry(
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// applyResourceOverrides applies project-level CPU/memory/rootfs/workdir/
+// passEnv/lsp overrides onto the local ToolDefinition copy. The stored
+// definition is unaffected because engine options are passed by value.
+//
+// This deliberately delegates to config.ApplyOverride for the heavyweight
+// merge logic (LSP env-merge, passEnv dedup, etc.) but only copies the
+// resource-shaped fields back. We avoid swapping the whole ToolDefinition
+// because the engine has older code paths that read other fields (env, ports,
+// network, image, cache) via a separate override-resolution path with subtly
+// different merge semantics, and reusing those is intentional.
+func applyResourceOverrides(tool *config.ToolDefinition, name string, pc *config.ProjectConfig) {
+	if pc == nil {
+		return
+	}
+	o, ok := pc.Overrides[name]
+	if !ok {
+		return
+	}
+	if o.CPUs != 0 {
+		tool.CPUs = o.CPUs
+	}
+	if o.MemoryMB != 0 {
+		tool.MemoryMB = o.MemoryMB
+	}
+	if o.RootfsSizeMB != 0 {
+		tool.RootfsSizeMB = o.RootfsSizeMB
+	}
+	if o.Workdir != "" {
+		tool.Workdir = o.Workdir
+	}
+	if len(o.PassEnv) > 0 {
+		// Append override passEnv to the base, deduping while preserving order.
+		// buildEnv reads tool.PassEnv when materializing the env map, so this
+		// is the single hook that makes per-tool passEnv work.
+		seen := make(map[string]struct{}, len(tool.PassEnv)+len(o.PassEnv))
+		merged := make([]string, 0, len(tool.PassEnv)+len(o.PassEnv))
+		for _, k := range tool.PassEnv {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			merged = append(merged, k)
+		}
+		for _, k := range o.PassEnv {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			merged = append(merged, k)
+		}
+		tool.PassEnv = merged
+	}
+	if o.LSP != nil {
+		// Reuse config-package merge so semantics match silo current / silo sync.
+		merged := config.ApplyOverride(*tool, config.ToolOverride{LSP: o.LSP})
+		tool.LSP = merged.LSP
+	}
+}
 
 func resolveOverrides(tool config.ToolDefinition, name string, pc *config.ProjectConfig) (
 	effectiveNet *config.NetworkConfig,

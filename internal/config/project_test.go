@@ -318,6 +318,207 @@ func TestCleanupEmptyKeepsOverrideWithPostInstall(t *testing.T) {
 	}
 }
 
+// TestToolOverrideParsesResources is the regression test for the bug where
+// .siloconf entries like `cpus: 4 / memoryMB: 6144 / rootfsSizeMB: 4096` were
+// silently dropped at parse time because ToolOverride lacked the fields.
+// `silo current node` then reported the global default and the VM booted with
+// the smaller cap, OOM-killing larger workloads with no diagnostic.
+func TestToolOverrideParsesResources(t *testing.T) {
+	src := `
+tools: [node]
+overrides:
+  node:
+    cpus: 4
+    memoryMB: 6144
+    rootfsSizeMB: 4096
+`
+	var c ProjectConfig
+	if err := yaml.Unmarshal([]byte(src), &c); err != nil {
+		t.Fatal(err)
+	}
+	o, ok := c.Overrides["node"]
+	if !ok {
+		t.Fatalf("override missing: %+v", c.Overrides)
+	}
+	if o.CPUs != 4 || o.MemoryMB != 6144 || o.RootfsSizeMB != 4096 {
+		t.Fatalf("resources not parsed: %+v", o)
+	}
+}
+
+func TestMergeOverResourceOverridesWin(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"node": {CPUs: 2, MemoryMB: 1024, RootfsSizeMB: 2048},
+		},
+	}
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"node": {CPUs: 4, MemoryMB: 6144, RootfsSizeMB: 4096},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["node"]
+	if got.CPUs != 4 || got.MemoryMB != 6144 || got.RootfsSizeMB != 4096 {
+		t.Fatalf("overlay should win: %+v", got)
+	}
+}
+
+func TestMergeOverZeroResourceKeepsBase(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"node": {MemoryMB: 1024},
+		},
+	}
+	// Overlay touches the same tool for an unrelated reason (env tweak) and
+	// leaves the resource fields at zero. Base values must survive.
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"node": {Env: map[string]string{"NODE_ENV": "development"}},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["node"]
+	if got.MemoryMB != 1024 {
+		t.Fatalf("base MemoryMB lost: %+v", got)
+	}
+	if got.Env["NODE_ENV"] != "development" {
+		t.Fatalf("overlay env lost: %+v", got)
+	}
+}
+
+func TestCleanupEmptyKeepsOverrideWithResources(t *testing.T) {
+	c := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"node": {MemoryMB: 6144},
+		},
+	}
+	c.cleanupEmpty()
+	if _, ok := c.Overrides["node"]; !ok {
+		t.Fatalf("override dropped despite non-zero MemoryMB: %+v", c.Overrides)
+	}
+	if c.Overrides["node"].MemoryMB != 6144 {
+		t.Fatalf("MemoryMB lost during cleanup: %+v", c.Overrides["node"])
+	}
+}
+
+func TestToolOverrideParsesWorkdirPassEnvLsp(t *testing.T) {
+	src := `
+overrides:
+  python:
+    workdir: /app
+    passEnv: [AWS_PROFILE, ANTHROPIC_API_KEY]
+    lsp:
+      command: [pyright-langserver, --stdio]
+      install: npm i -g pyright@1.1.350
+      env:
+        PYRIGHT_LOG: verbose
+      cache:
+        - guest: /root/.cache/pyright
+          host: ~/custom/pyright-cache
+`
+	var c ProjectConfig
+	if err := yaml.Unmarshal([]byte(src), &c); err != nil {
+		t.Fatal(err)
+	}
+	o, ok := c.Overrides["python"]
+	if !ok {
+		t.Fatalf("override missing: %+v", c.Overrides)
+	}
+	if o.Workdir != "/app" {
+		t.Fatalf("workdir not parsed: %q", o.Workdir)
+	}
+	if len(o.PassEnv) != 2 || o.PassEnv[0] != "AWS_PROFILE" || o.PassEnv[1] != "ANTHROPIC_API_KEY" {
+		t.Fatalf("passEnv not parsed: %+v", o.PassEnv)
+	}
+	if o.LSP == nil {
+		t.Fatal("lsp not parsed")
+	}
+	if o.LSP.Install != "npm i -g pyright@1.1.350" {
+		t.Fatalf("lsp.install not parsed: %q", o.LSP.Install)
+	}
+	if o.LSP.Env["PYRIGHT_LOG"] != "verbose" {
+		t.Fatalf("lsp.env not parsed: %+v", o.LSP.Env)
+	}
+	if len(o.LSP.Cache) != 1 || o.LSP.Cache[0].Host != "~/custom/pyright-cache" {
+		t.Fatalf("lsp.cache not parsed: %+v", o.LSP.Cache)
+	}
+}
+
+func TestMergeOverWorkdirAndPassEnv(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"python": {Workdir: "/workspace", PassEnv: []string{"GITHUB_TOKEN"}},
+		},
+	}
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"python": {Workdir: "/app", PassEnv: []string{"GITHUB_TOKEN", "AWS_PROFILE"}},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["python"]
+	if got.Workdir != "/app" {
+		t.Fatalf("workdir overlay should win: %q", got.Workdir)
+	}
+	want := []string{"GITHUB_TOKEN", "AWS_PROFILE"}
+	if len(got.PassEnv) != len(want) {
+		t.Fatalf("passEnv %+v want %+v", got.PassEnv, want)
+	}
+	for i, k := range want {
+		if got.PassEnv[i] != k {
+			t.Fatalf("passEnv[%d] = %q want %q", i, got.PassEnv[i], k)
+		}
+	}
+}
+
+func TestMergeOverLspMergesAtSameTool(t *testing.T) {
+	base := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"python": {LSP: &LspConfig{Install: "npm i -g pyright", Env: map[string]string{"A": "1"}}},
+		},
+	}
+	overlay := ProjectConfig{
+		Overrides: map[string]ToolOverride{
+			"python": {LSP: &LspConfig{Install: "npm i -g pyright@1.1.350", Env: map[string]string{"B": "2"}}},
+		},
+	}
+	merged := overlay.MergeOver(&base)
+	got := merged.Overrides["python"].LSP
+	if got == nil {
+		t.Fatal("lsp dropped")
+	}
+	if got.Install != "npm i -g pyright@1.1.350" {
+		t.Fatalf("install: %q", got.Install)
+	}
+	if got.Env["A"] != "1" || got.Env["B"] != "2" {
+		t.Fatalf("env merge: %+v", got.Env)
+	}
+}
+
+func TestCleanupEmptyKeepsOverrideWithWorkdir(t *testing.T) {
+	c := ProjectConfig{Overrides: map[string]ToolOverride{"python": {Workdir: "/app"}}}
+	c.cleanupEmpty()
+	if _, ok := c.Overrides["python"]; !ok {
+		t.Fatalf("override dropped despite workdir: %+v", c.Overrides)
+	}
+}
+
+func TestCleanupEmptyKeepsOverrideWithPassEnv(t *testing.T) {
+	c := ProjectConfig{Overrides: map[string]ToolOverride{"python": {PassEnv: []string{"X"}}}}
+	c.cleanupEmpty()
+	if _, ok := c.Overrides["python"]; !ok {
+		t.Fatalf("override dropped despite passEnv: %+v", c.Overrides)
+	}
+}
+
+func TestCleanupEmptyKeepsOverrideWithLsp(t *testing.T) {
+	c := ProjectConfig{Overrides: map[string]ToolOverride{"python": {LSP: &LspConfig{Install: "x"}}}}
+	c.cleanupEmpty()
+	if _, ok := c.Overrides["python"]; !ok {
+		t.Fatalf("override dropped despite lsp: %+v", c.Overrides)
+	}
+}
+
 func TestSetOverrideImage(t *testing.T) {
 	c := ProjectConfig{}
 	c.SetOverrideImage("python", "docker.io/library/python:3.11-slim")

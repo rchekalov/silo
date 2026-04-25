@@ -85,6 +85,14 @@ Found by walking up from current directory. Merged with global siloconf (`~/.sil
 - `overrides.<tool>.env` — per-project environment variables
 - `overrides.<tool>.network` — per-project network config
 - `overrides.<tool>.ports` — per-project port mappings
+- `overrides.<tool>.postInstall` — extra bake steps appended to the registry's
+- `overrides.<tool>.cache` — extra cache mounts (deduped by guest path)
+- `overrides.<tool>.cpus` / `memoryMB` / `rootfsSizeMB` — per-project resource bumps (e.g. a Vue/Vite build needs ≥ 6 GB RAM)
+- `overrides.<tool>.workdir` — guest working directory (e.g. `/app` instead of `/workspace`)
+- `overrides.<tool>.passEnv` — host env vars forwarded only for this tool (e.g. `ANTHROPIC_API_KEY` only for `claude-code`)
+- `overrides.<tool>.lsp` — pin a language-server install command, add LSP-only cache mounts, tweak LSP env
+
+Not overridable (registry/engine concerns): `shims`, `requires`, `buildRootfs`, `buildScript`, `buildScope`, `buildProjectRoot`.
 
 Merge order: tool defaults -> global siloconf -> project .siloconf
 

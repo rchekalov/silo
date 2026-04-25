@@ -156,6 +156,139 @@ func TestApplyOverrideEmptyPostInstallKeepsBase(t *testing.T) {
 	}
 }
 
+func TestApplyOverrideResourcesReplace(t *testing.T) {
+	def := ToolDefinition{CPUs: 2, MemoryMB: 512, RootfsSizeMB: 2048}
+	out := ApplyOverride(def, ToolOverride{CPUs: 4, MemoryMB: 6144, RootfsSizeMB: 4096})
+	if out.CPUs != 4 || out.MemoryMB != 6144 || out.RootfsSizeMB != 4096 {
+		t.Fatalf("resources not applied: %+v", out)
+	}
+	// Original untouched.
+	if def.CPUs != 2 || def.MemoryMB != 512 || def.RootfsSizeMB != 2048 {
+		t.Fatalf("base mutated: %+v", def)
+	}
+}
+
+func TestApplyOverrideZeroResourcesKeepsBase(t *testing.T) {
+	def := ToolDefinition{CPUs: 2, MemoryMB: 512, RootfsSizeMB: 2048}
+	out := ApplyOverride(def, ToolOverride{Image: "x:1"})
+	if out.CPUs != 2 || out.MemoryMB != 512 || out.RootfsSizeMB != 2048 {
+		t.Fatalf("zero-override should not clobber base: %+v", out)
+	}
+}
+
+func TestApplyOverridePartialResources(t *testing.T) {
+	def := ToolDefinition{CPUs: 2, MemoryMB: 512, RootfsSizeMB: 2048}
+	out := ApplyOverride(def, ToolOverride{MemoryMB: 6144})
+	if out.MemoryMB != 6144 {
+		t.Fatalf("MemoryMB not overridden: %+v", out)
+	}
+	if out.CPUs != 2 || out.RootfsSizeMB != 2048 {
+		t.Fatalf("untouched resource fields drifted: %+v", out)
+	}
+}
+
+func TestApplyOverrideWorkdirReplaces(t *testing.T) {
+	def := ToolDefinition{Workdir: "/workspace"}
+	out := ApplyOverride(def, ToolOverride{Workdir: "/app"})
+	if out.Workdir != "/app" {
+		t.Fatalf("workdir not overridden: %q", out.Workdir)
+	}
+}
+
+func TestApplyOverrideEmptyWorkdirKeepsBase(t *testing.T) {
+	def := ToolDefinition{Workdir: "/workspace"}
+	out := ApplyOverride(def, ToolOverride{Image: "x:1"})
+	if out.Workdir != "/workspace" {
+		t.Fatalf("workdir clobbered by empty override: %q", out.Workdir)
+	}
+}
+
+func TestApplyOverridePassEnvDedupAppends(t *testing.T) {
+	def := ToolDefinition{PassEnv: []string{"GITHUB_TOKEN", "AWS_PROFILE"}}
+	out := ApplyOverride(def, ToolOverride{PassEnv: []string{"AWS_PROFILE", "ANTHROPIC_API_KEY"}})
+	want := []string{"GITHUB_TOKEN", "AWS_PROFILE", "ANTHROPIC_API_KEY"}
+	if len(out.PassEnv) != len(want) {
+		t.Fatalf("passEnv %+v want %+v", out.PassEnv, want)
+	}
+	for i, k := range want {
+		if out.PassEnv[i] != k {
+			t.Fatalf("passEnv[%d] = %q want %q (full %+v)", i, out.PassEnv[i], k, out.PassEnv)
+		}
+	}
+	// Original untouched.
+	if len(def.PassEnv) != 2 {
+		t.Fatalf("base passEnv mutated: %+v", def.PassEnv)
+	}
+}
+
+func TestApplyOverrideLspMergesEnvAndCache(t *testing.T) {
+	def := ToolDefinition{
+		LSP: &LspConfig{
+			Command: []string{"pyright-langserver", "--stdio"},
+			Install: "npm i -g pyright",
+			Env:     map[string]string{"NODE_OPTIONS": "--max-old-space-size=2048"},
+			Cache:   []CacheMount{{Guest: "/root/.cache/pyright", Host: "~/.silo/cache/python/pyright"}},
+		},
+	}
+	override := ToolOverride{
+		LSP: &LspConfig{
+			Install: "npm i -g pyright@1.1.350",
+			Env:     map[string]string{"NODE_OPTIONS": "--max-old-space-size=4096", "PYRIGHT_LOG": "verbose"},
+			Cache:   []CacheMount{{Guest: "/root/.cache/pyright", Host: "~/custom/pyright-cache"}},
+		},
+	}
+	out := ApplyOverride(def, override)
+	if out.LSP == nil {
+		t.Fatal("lsp dropped")
+	}
+	// Command unchanged because override didn't set it.
+	if len(out.LSP.Command) != 2 || out.LSP.Command[0] != "pyright-langserver" {
+		t.Fatalf("command lost: %+v", out.LSP.Command)
+	}
+	if out.LSP.Install != "npm i -g pyright@1.1.350" {
+		t.Fatalf("install not overridden: %q", out.LSP.Install)
+	}
+	if out.LSP.Env["NODE_OPTIONS"] != "--max-old-space-size=4096" || out.LSP.Env["PYRIGHT_LOG"] != "verbose" {
+		t.Fatalf("env merge wrong: %+v", out.LSP.Env)
+	}
+	// Cache deduped by guest path; override host wins.
+	if len(out.LSP.Cache) != 1 || out.LSP.Cache[0].Host != "~/custom/pyright-cache" {
+		t.Fatalf("cache merge wrong: %+v", out.LSP.Cache)
+	}
+	// Base untouched.
+	if def.LSP.Install != "npm i -g pyright" {
+		t.Fatalf("base lsp mutated: %+v", def.LSP)
+	}
+	if def.LSP.Env["NODE_OPTIONS"] != "--max-old-space-size=2048" {
+		t.Fatalf("base lsp env mutated: %+v", def.LSP.Env)
+	}
+}
+
+func TestApplyOverrideLspNilOverrideKeepsBase(t *testing.T) {
+	def := ToolDefinition{LSP: &LspConfig{Install: "npm i -g pyright"}}
+	out := ApplyOverride(def, ToolOverride{Image: "x:1"})
+	if out.LSP == nil || out.LSP.Install != "npm i -g pyright" {
+		t.Fatalf("base lsp dropped: %+v", out.LSP)
+	}
+}
+
+func TestApplyOverrideLspOntoNilBase(t *testing.T) {
+	def := ToolDefinition{} // no LSP at all on base
+	out := ApplyOverride(def, ToolOverride{LSP: &LspConfig{
+		Command: []string{"my-lsp"},
+		Install: "echo nothing",
+	}})
+	if out.LSP == nil {
+		t.Fatal("override-only lsp lost")
+	}
+	if len(out.LSP.Command) != 1 || out.LSP.Command[0] != "my-lsp" {
+		t.Fatalf("command not applied: %+v", out.LSP.Command)
+	}
+	if out.LSP.Install != "echo nothing" {
+		t.Fatalf("install not applied: %q", out.LSP.Install)
+	}
+}
+
 func TestApplyOverrideEmptyIsIdentity(t *testing.T) {
 	def := ToolDefinition{Image: "a:1", Env: map[string]string{"K": "V"}}
 	out := ApplyOverride(def, ToolOverride{})

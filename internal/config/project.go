@@ -40,6 +40,25 @@ type ToolOverride struct {
 	Ports       []PortMapping     `yaml:"ports,omitempty"`
 	PostInstall []string          `yaml:"postInstall,omitempty"`
 	Cache       []CacheMount      `yaml:"cache,omitempty"`
+	// CPUs / MemoryMB / RootfsSizeMB override the registry/global resource
+	// defaults on a per-project basis. Zero means "no override" — the base
+	// ToolDefinition's value wins. Tag spelling matches ToolDefinition so
+	// `silo config show` round-trips and global vs project keys stay aligned.
+	CPUs         int32  `yaml:"cpus,omitempty"`
+	MemoryMB     uint64 `yaml:"memoryMB,omitempty"`
+	RootfsSizeMB uint64 `yaml:"rootfsSizeMB,omitempty"`
+	// Workdir overrides the guest working directory (e.g. monorepos that mount
+	// the project at /app instead of /workspace). Empty string means "no override".
+	Workdir string `yaml:"workdir,omitempty"`
+	// PassEnv adds host env var names that should be copied into the guest for
+	// this tool only. Use it for credentials scoped to one tool (e.g. only
+	// `claude-code` should see ANTHROPIC_API_KEY). Merged with the base
+	// ToolDefinition.PassEnv and the project-level PassEnv.
+	PassEnv []string `yaml:"passEnv,omitempty"`
+	// LSP overrides bits of the registry's LspConfig: pin a language-server
+	// install command, add LSP-only cache mounts, tweak LSP env. Non-empty
+	// fields win over the base; nil sub-fields leave the base intact.
+	LSP *LspConfig `yaml:"lsp,omitempty"`
 }
 
 // ProjectConfig is .siloconf at the project root (or ~/.silo/siloconf, globally).
@@ -242,6 +261,24 @@ func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
 		if len(override.Cache) > 0 {
 			existing.Cache = mergeCacheMounts(existing.Cache, override.Cache)
 		}
+		if override.CPUs != 0 {
+			existing.CPUs = override.CPUs
+		}
+		if override.MemoryMB != 0 {
+			existing.MemoryMB = override.MemoryMB
+		}
+		if override.RootfsSizeMB != 0 {
+			existing.RootfsSizeMB = override.RootfsSizeMB
+		}
+		if override.Workdir != "" {
+			existing.Workdir = override.Workdir
+		}
+		if len(override.PassEnv) > 0 {
+			existing.PassEnv = dedupMerge(existing.PassEnv, override.PassEnv)
+		}
+		if override.LSP != nil {
+			existing.LSP = mergeLspConfig(existing.LSP, override.LSP)
+		}
 		merged[tool] = existing
 	}
 	if len(merged) > 0 {
@@ -439,7 +476,7 @@ func (c *ProjectConfig) cleanupEmpty() {
 		if len(o.Cache) == 0 {
 			o.Cache = nil
 		}
-		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 && len(o.PostInstall) == 0 && len(o.Cache) == 0 {
+		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 && len(o.PostInstall) == 0 && len(o.Cache) == 0 && o.CPUs == 0 && o.MemoryMB == 0 && o.RootfsSizeMB == 0 && o.Workdir == "" && len(o.PassEnv) == 0 && o.LSP == nil {
 			delete(c.Overrides, tool)
 			continue
 		}
@@ -466,6 +503,47 @@ func filterOut(s []string, v string) ([]string, bool) {
 	}
 	// Reallocate a fresh slice so the backing array isn't shared.
 	return append([]string(nil), out...), true
+}
+
+// mergeLspConfig returns base merged with overlay. nil overlay returns base.
+// nil base returns a deep copy of overlay. Non-empty overlay scalar/array fields
+// win; overlay env merges per-key onto base; overlay cache mounts dedup-by-guest
+// onto base via mergeCacheMounts. The result is always a fresh allocation —
+// neither input is mutated and the returned pointers are not shared.
+func mergeLspConfig(base, overlay *LspConfig) *LspConfig {
+	if overlay == nil {
+		return base
+	}
+	out := LspConfig{}
+	if base != nil {
+		out.Command = append([]string(nil), base.Command...)
+		out.Install = base.Install
+		out.Cache = append([]CacheMount(nil), base.Cache...)
+		if len(base.Env) > 0 {
+			out.Env = make(map[string]string, len(base.Env))
+			for k, v := range base.Env {
+				out.Env[k] = v
+			}
+		}
+	}
+	if len(overlay.Command) > 0 {
+		out.Command = append([]string(nil), overlay.Command...)
+	}
+	if overlay.Install != "" {
+		out.Install = overlay.Install
+	}
+	if len(overlay.Cache) > 0 {
+		out.Cache = mergeCacheMounts(out.Cache, overlay.Cache)
+	}
+	if len(overlay.Env) > 0 {
+		if out.Env == nil {
+			out.Env = make(map[string]string, len(overlay.Env))
+		}
+		for k, v := range overlay.Env {
+			out.Env[k] = v
+		}
+	}
+	return &out
 }
 
 // mergeCacheMounts returns base+overlay, deduplicated by Guest path.

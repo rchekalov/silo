@@ -21,7 +21,7 @@ Use this skill when the user wants to:
 ## Mental model
 
 - `silo install <tool>` puts a shim in `~/.silo/bin/`; afterwards `python script.py` transparently runs `silo run python script.py` inside a VM.
-- `.siloconf` (YAML, walks up from cwd; global fallback at `~/.silo/siloconf`) controls what the sandbox can see: `passEnv`, `passFiles`, `overrides` (per-tool `network`, `ports`, `env`, `image`).
+- `.siloconf` (YAML, walks up from cwd; global fallback at `~/.silo/siloconf`) controls what the sandbox can see: `passEnv`, `passFiles`, `overrides` (per-tool `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `lsp`).
 - Each run is a fresh VM. Packages installed with `pip install foo` inside a run vanish when it exits — use `silo setup` or per-tool cache mounts to persist state.
 - Rootfs is cached per OCI digest at `~/.silo/rootfs-cache/` (APFS clonefile for sub-second starts). Cold entries can be zstd-compressed to save ~4× disk.
 
