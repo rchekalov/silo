@@ -26,18 +26,13 @@ overrides:
     image: docker.io/library/python:3.12-slim
 YAML
 
-# 3. Sync must produce a project-scoped rootfs. Capture output in case of
-#    failure; hide it on success to keep the test log tidy.
+# 3. Sync must run cleanly. The auto-bake now lives content-addressed under
+#    ~/.silo/baked/<recipeHash>/ rather than <projectRoot>/.silo/<tool>/, so
+#    the proof a bake actually happened is the probe in step 4 — pyright +
+#    Python 3.12 are only present in the baked rootfs, not the global one.
 sync_output=""
 if ! sync_output=$(cd "$WORKDIR" && "$SILO_BIN" sync 2>&1); then
     echo "FAIL: silo sync exited non-zero" >&2
-    echo "$sync_output" >&2
-    exit 1
-fi
-
-if [ ! -f "$WORKDIR/.silo/python/rootfs.ext4" ]; then
-    echo "FAIL: expected $WORKDIR/.silo/python/rootfs.ext4 after sync" >&2
-    echo "sync output:" >&2
     echo "$sync_output" >&2
     exit 1
 fi

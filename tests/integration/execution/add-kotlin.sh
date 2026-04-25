@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Verifies that `silo add kotlin` in a Kotlin-marked project:
 #   1. creates/updates .siloconf with overrides.claude-code.postInstall
-#   2. bakes a project-scoped rootfs at .silo/claude-code/rootfs.ext4
+#   2. `silo sync` bakes a project-scoped rootfs (now stored content-addressed
+#      under ~/.silo/baked/<recipeHash>/rootfs.ext4 — see project_state.go)
 #   3. the baked rootfs actually contains the kotlin binary
 #
 # Skipped by run-all.sh unless claude-code is globally installed.
@@ -35,16 +36,11 @@ if ! grep -q "postInstall" .siloconf; then
 fi
 echo "PASS: .siloconf updated"
 
-echo "Testing: silo sync produces project rootfs"
+echo "Testing: silo sync runs without error"
 "$SILO_BIN" sync >/dev/null 2>&1
+echo "PASS: silo sync succeeded"
 
-if [ ! -f .silo/claude-code/rootfs.ext4 ]; then
-  echo "FAIL: project rootfs not produced at .silo/claude-code/rootfs.ext4"
-  exit 1
-fi
-echo "PASS: project rootfs present"
-
-echo "Testing: baked rootfs has kotlin binary"
+echo "Testing: baked rootfs has kotlin binary (the real assertion — if no bake ran, this fails)"
 if ! "$SILO_BIN" run --shim sh claude-code -c 'command -v kotlin >/dev/null && kotlin -version 2>&1 | head -1' | grep -qi kotlin; then
   echo "FAIL: kotlin not reachable inside claude-code"
   exit 1
