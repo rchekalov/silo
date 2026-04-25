@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/rchekalov/silo/internal/config"
+	"github.com/rchekalov/silo/internal/runtime"
+	"github.com/rchekalov/silo/internal/tools"
 )
 
 func TestDispatchStatusFor(t *testing.T) {
@@ -144,7 +146,7 @@ func TestRenderInstalledList(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := renderInstalled(&buf, g); err != nil {
+	if err := renderInstalled(&buf, g, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -179,11 +181,55 @@ func TestRenderInstalledList(t *testing.T) {
 
 func TestRenderInstalledListEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := renderInstalled(&buf, &config.GlobalConfig{}); err != nil {
+	if err := renderInstalled(&buf, &config.GlobalConfig{}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "No tools installed") {
 		t.Fatalf("expected empty-state message; got %q", buf.String())
+	}
+}
+
+func TestRenderInstalledIncludesProjectPinnedImages(t *testing.T) {
+	g := &config.GlobalConfig{
+		Tools: map[string]config.ToolDefinition{
+			"node": {
+				Image:          "docker.io/library/node:22-slim",
+				PinnedGlobally: true,
+				Shims: []config.ShimMapping{
+					{HostCommand: "node", ContainerCommand: "node"},
+				},
+			},
+		},
+	}
+	imgState := map[string]runtime.ImageStateEntry{
+		// Globally registered — should appear once via the cfg row, not
+		// duplicated.
+		"docker.io/library/node:22-slim": {Digest: "sha256:aaaa"},
+		// Project-pinned only — should appear as an extra row with
+		// pinned=project.
+		"docker.io/library/node:18-slim": {Digest: "sha256:bbbb"},
+	}
+	registry := map[string]tools.RegistryEntry{
+		"node": {
+			Image: "docker.io/library/node:22-slim",
+			Shims: []config.ShimMapping{
+				{HostCommand: "node", ContainerCommand: "node"},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderInstalled(&buf, g, imgState, registry); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "node:22-slim") || !strings.Contains(out, "yes") {
+		t.Fatalf("expected globally-pinned node:22-slim row; got:\n%s", out)
+	}
+	if !strings.Contains(out, "node:18-slim") || !strings.Contains(out, "project") {
+		t.Fatalf("expected project-pinned node:18-slim row; got:\n%s", out)
+	}
+	if c := strings.Count(out, "node:22-slim"); c != 1 {
+		t.Fatalf("globally-pinned image should not be duplicated, got %d occurrences:\n%s", c, out)
 	}
 }
 

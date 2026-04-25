@@ -337,10 +337,13 @@ func bakeProjectForTool(tool string, merged *config.ProjectConfig, global *confi
 		if err != nil {
 			return "", err
 		}
-		if baked {
+		switch {
+		case baked:
 			fmt.Printf("  %-20s  baked project rootfs at %s (pinned %s)\n", tool, runtime.BakedRootfs(recipeHash), def.Image)
-		} else {
-			fmt.Printf("  %-20s  project rootfs up-to-date (pinned %s)\n", tool, def.Image)
+		case recipeHash != "":
+			fmt.Printf("  %-20s  project bake up-to-date at %s (pinned %s)\n", tool, runtime.BakedRootfs(recipeHash), def.Image)
+		default:
+			fmt.Printf("  %-20s  no bake needed; pinned %s served from rootfs cache\n", tool, def.Image)
 		}
 		return recipeHash, nil
 	}
@@ -377,7 +380,7 @@ func bakeProjectPostInstallFor(tool string, merged *config.ProjectConfig, global
 	if baked {
 		fmt.Printf("  %-20s  baked project rootfs at %s\n", tool, runtime.BakedRootfs(recipeHash))
 	} else {
-		fmt.Printf("  %-20s  project rootfs up-to-date\n", tool)
+		fmt.Printf("  %-20s  project bake up-to-date at %s\n", tool, runtime.BakedRootfs(recipeHash))
 	}
 	return recipeHash, nil
 }

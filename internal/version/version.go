@@ -6,4 +6,4 @@ package version
 // Overridable at link time via:
 //
 //	go build -ldflags "-X github.com/rchekalov/silo/internal/version.Version=<tag>"
-var Version = "0.5.0"
+var Version = "0.5.1"

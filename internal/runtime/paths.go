@@ -21,6 +21,7 @@ func Root() string {
 }
 
 func Config() string     { return filepath.Join(Root(), "config.yaml") }
+func ImageState() string { return filepath.Join(Root(), "state.json") }
 func ShimBin() string    { return filepath.Join(Root(), "bin") }
 func Kernel() string     { return filepath.Join(Root(), "vmlinux") }
 func Initfs() string     { return filepath.Join(Root(), "initfs.ext4") }
