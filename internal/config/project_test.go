@@ -36,6 +36,28 @@ overrides:
 	}
 }
 
+func TestProjectConfigClaims(t *testing.T) {
+	c := &ProjectConfig{
+		Tools: []string{"node"},
+		Overrides: map[string]ToolOverride{
+			"python": {Image: "python:3.12-slim"},
+		},
+	}
+	if !c.Claims("node") {
+		t.Fatal("tools: entry should claim")
+	}
+	if !c.Claims("python") {
+		t.Fatal("overrides: entry should claim")
+	}
+	if c.Claims("ruby") {
+		t.Fatal("unrelated tool should not be claimed")
+	}
+	var nilCfg *ProjectConfig
+	if nilCfg.Claims("anything") {
+		t.Fatal("nil config should claim nothing (no panic)")
+	}
+}
+
 func TestAddPort(t *testing.T) {
 	var c ProjectConfig
 	c.AddPort("python", 8080, 8080)

@@ -136,6 +136,11 @@ func (in *Installer) Install(opts InstallOptions) (config.ToolDefinition, error)
 	if err := in.Shims.CreateShims(def, opts.Name); err != nil {
 		return def, err
 	}
+	// `silo install` is the explicit "silo owns this command everywhere" gesture,
+	// so the entry is globally pinned. `silo sync` writes through a different
+	// path (commands/pull.go) that leaves the flag false — those tools fall
+	// through to the next-on-PATH instance outside projects that claim them.
+	def.PinnedGlobally = true
 	if err := in.Config.InstallTool(opts.Name, def); err != nil {
 		return def, err
 	}

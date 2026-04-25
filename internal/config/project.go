@@ -81,6 +81,25 @@ type ProjectConfig struct {
 	ProjectID string `yaml:"project_id,omitempty"`
 }
 
+// Claims reports whether this project config claims `tool` — listed under
+// `tools:` or with an entry under `overrides:`. The silo-run dispatch uses
+// this to decide whether a shim invocation enters silo or falls through to
+// the next instance on PATH (pyenv-style behavior).
+func (c *ProjectConfig) Claims(tool string) bool {
+	if c == nil {
+		return false
+	}
+	for _, t := range c.Tools {
+		if t == tool {
+			return true
+		}
+	}
+	if _, ok := c.Overrides[tool]; ok {
+		return true
+	}
+	return false
+}
+
 // ProjectTools returns the sorted, deduplicated set of tools required by this
 // project: the union of `tools:` and the keys of `overrides:`. Used by
 // `silo pull` and `silo clean` to find the project's tool set.

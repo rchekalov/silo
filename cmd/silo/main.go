@@ -100,6 +100,11 @@ func tryShimDispatch(shim string) bool {
 	if len(passthrough) > 0 {
 		_ = os.Setenv("_SILO_PASSTHROUGH", strings.Join(passthrough, "\x1F"))
 	}
+	// Mark this invocation as having entered silo through a PATH shim (vs. the
+	// user explicitly typing `silo run ...`). The run command consults this to
+	// decide whether to fall through to the next instance on PATH when no
+	// project claims the tool and it isn't globally pinned.
+	_ = os.Setenv("_SILO_SHIM_DISPATCH", "1")
 	os.Args = append([]string{"silo"}, args...)
 	if err := commands.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

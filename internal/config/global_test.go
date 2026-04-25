@@ -3,6 +3,7 @@
 package config
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -72,6 +73,68 @@ tools:
 	}
 	if n, _ := c.ResolveShim("node"); n != "" {
 		t.Fatalf("expected empty, got %q", n)
+	}
+}
+
+func TestLoadGlobalConfigMigratesV1ToV2(t *testing.T) {
+	// A v1 file (no `pinnedGlobally` key, version: 1) must come back with
+	// every tool flagged PinnedGlobally=true so legacy installs keep their
+	// "silo always handles this" behavior after the upgrade.
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	src := `version: 1
+tools:
+  python:
+    image: docker.io/library/python:3.12-slim
+    shims: [python, pip]
+  node:
+    image: docker.io/library/node:22-slim
+    shims: [node, npm]
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadGlobalConfigAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Version != GlobalConfigVersion {
+		t.Fatalf("version after migration: got %d, want %d", c.Version, GlobalConfigVersion)
+	}
+	for name, tool := range c.Tools {
+		if !tool.PinnedGlobally {
+			t.Fatalf("tool %q: PinnedGlobally should be true after v1→v2 migration", name)
+		}
+	}
+}
+
+func TestLoadGlobalConfigV2RespectsField(t *testing.T) {
+	// On v2, the field is authoritative — a sync-installed tool stays
+	// unpinned, a deliberately-installed tool stays pinned.
+	dir := t.TempDir()
+	path := dir + "/config.yaml"
+	src := `version: 2
+tools:
+  python:
+    image: docker.io/library/python:3.12-slim
+    pinnedGlobally: true
+    shims: [python]
+  node:
+    image: docker.io/library/node:22-slim
+    shims: [node, npm]
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadGlobalConfigAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Tools["python"].PinnedGlobally {
+		t.Fatal("python should remain pinned on v2 load")
+	}
+	if c.Tools["node"].PinnedGlobally {
+		t.Fatal("node should remain unpinned on v2 load")
 	}
 }
 

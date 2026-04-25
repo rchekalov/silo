@@ -59,6 +59,11 @@ silo use node                        # pin default version of node for this proj
 silo use --global python@3.12        # pin in ~/.silo/siloconf instead
 silo unuse python                    # unpin from .siloconf
 
+# Global ownership (pin/unpin) — controls shim fall-through outside projects
+silo pin node                        # silo always handles node's shims, even outside .siloconf-claimed dirs
+silo unpin node                      # node shim falls through to next-on-PATH outside projects that claim it
+                                     # `silo install <tool>` sets pinned=true; `silo sync` sets pinned=false
+
 # Project lifecycle (per-project reconcile + disk reclamation)
 silo sync                             # reconcile env to .siloconf (install missing tools, warm rootfs cache)
                                       # `silo pull` / `silo apply` remain as deprecated aliases (removed in 0.6.0)
@@ -317,6 +322,8 @@ shim (or silo run) → cmd/silo/main.go
 
 **Tool shorthand:** [cmd/silo/main.go](cmd/silo/main.go) `transformArgs` — `silo python script.py` is rewritten to `silo run python script.py` before cobra parses.
 
+**Pyenv-style shim fall-through:** [internal/commands/run.go](internal/commands/run.go) `runRun` + `execNextOnPath` — when a PATH-shim invocation reaches `silo run` (the shim script sets `_SILO_SHIM_DISPATCH=1` before exec), `silo run` checks the merged `.siloconf` walked up from cwd. If no project claims the tool (`ProjectConfig.Claims`) and the entry isn't `pinnedGlobally: true` in `~/.silo/config.yaml`, silo strips `~/.silo/bin/` from PATH and `syscall.Exec`'s the next instance of the command — letting homebrew/pyenv/system tools handle invocations outside silo projects without silo overhead. `silo install <tool>` sets `pinnedGlobally: true`; `silo sync` leaves it false. Use `silo pin` / `silo unpin` to flip after the fact. Direct invocations (`silo run python`, `silo python foo.py` shorthand) skip fall-through — they are explicit and must run inside silo or error out.
+
 **Pass-through split:** For `silo run` / `silo build`, `transformArgs` walks argv, hoists known silo flags (e.g. `--timing`, `--rerun`, `--shim`) to the front of the tool positional, and treats everything after the tool as the inner command (forwarded via `_SILO_PASSTHROUGH`). The legacy `--` separator still works: if `--` appears in argv, the older strip-after-`--` path takes over verbatim.
 
 ### Rootfs Caching
@@ -531,6 +538,7 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 | Field | Go type | Default | Notes |
 |---|---|---|---|
 | `image` | string | -- | OCI image reference |
+| `pinnedGlobally` | bool | false (v1 migration: true) | When true, the tool's shims always dispatch into silo regardless of cwd. When false, shim invocations outside any project that claims the tool fall through to the next instance on PATH (pyenv-style). `silo install` sets true; `silo sync` leaves false. v1 configs migrate to true on first load to preserve prior behavior. Toggle with `silo pin` / `silo unpin`. |
 | `shims` | []ShimMapping | nil | Entries in ~/.silo/bin/ |
 | `cache` | []CacheMount | nil | Persistent host<->guest mounts. Each entry: `guest`, `host`, optional `sizeHint`, optional `noGC: true` to exempt from `silo cache gc --tool-caches` (for durable state like OAuth credentials, not regenerable cache). |
 | `workdir` | string | /workspace | Container working directory |

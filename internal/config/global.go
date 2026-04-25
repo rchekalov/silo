@@ -18,6 +18,16 @@ import (
 	"github.com/rchekalov/silo/internal/runtime"
 )
 
+// GlobalConfigVersion is the current schema version of ~/.silo/config.yaml.
+//
+//   - v1: original layout. Every installed tool is implicitly globally claimed
+//     (silo always handles its shims).
+//   - v2: adds ToolDefinition.PinnedGlobally. Old v1 entries migrate by
+//     defaulting PinnedGlobally=true on load (preserves prior behavior). Fresh
+//     entries written by `silo sync` set it to false so shim invocations fall
+//     through to the next instance on PATH outside silo projects.
+const GlobalConfigVersion = 2
+
 // GlobalConfig is ~/.silo/config.yaml — the list of installed tools.
 type GlobalConfig struct {
 	Version int                       `yaml:"version"`
@@ -28,9 +38,9 @@ type GlobalConfig struct {
 	path string `yaml:"-"`
 }
 
-// NewGlobalConfig returns an empty v1 config targeting the default path.
+// NewGlobalConfig returns an empty config at the current schema version.
 func NewGlobalConfig() *GlobalConfig {
-	return &GlobalConfig{Version: 1, Tools: map[string]ToolDefinition{}, path: runtime.Config()}
+	return &GlobalConfig{Version: GlobalConfigVersion, Tools: map[string]ToolDefinition{}, path: runtime.Config()}
 }
 
 // LoadGlobalConfig reads ~/.silo/config.yaml. If missing, returns an empty config.
@@ -57,6 +67,17 @@ func LoadGlobalConfigAt(path string) (*GlobalConfig, error) {
 	}
 	if c.Version == 0 {
 		c.Version = 1
+	}
+	// v1 → v2 migration: every existing tool was implicitly globally claimed,
+	// so default PinnedGlobally=true for them. Future installs set the flag
+	// explicitly: `silo install` → true, `silo sync` → false. Bump the on-disk
+	// version so subsequent loads read the field as authoritative.
+	if c.Version < GlobalConfigVersion {
+		for name, t := range c.Tools {
+			t.PinnedGlobally = true
+			c.Tools[name] = t
+		}
+		c.Version = GlobalConfigVersion
 	}
 	c.path = path
 	return c, nil

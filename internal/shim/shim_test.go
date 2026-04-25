@@ -24,7 +24,10 @@ func TestShimScriptContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `exec "/usr/local/bin/silo" run python --shim "pip" -- "$@"`) {
+	// The _SILO_SHIM_DISPATCH=1 prefix marks invocations that came in through
+	// a PATH shim, so silo run can decide whether to fall through to the next
+	// instance on PATH (pyenv-style) when no project claims the tool.
+	if !strings.Contains(string(raw), `exec env _SILO_SHIM_DISPATCH=1 "/usr/local/bin/silo" run python --shim "pip" -- "$@"`) {
 		t.Fatalf("unexpected shim content:\n%s", raw)
 	}
 

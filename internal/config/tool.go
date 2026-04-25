@@ -95,11 +95,18 @@ type LspConfig struct {
 
 // ToolDefinition captures everything we need to create a VM and run a tool.
 type ToolDefinition struct {
-	Image   string            `yaml:"image"`
-	Shims   []ShimMapping     `yaml:"shims,omitempty"`
-	Cache   []CacheMount      `yaml:"cache,omitempty"`
-	Workdir string            `yaml:"workdir,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty"`
+	Image string `yaml:"image"`
+	// PinnedGlobally is true when the user explicitly ran `silo install <tool>`,
+	// claiming ownership of this command everywhere on PATH. False when the
+	// tool was incidentally installed by `silo sync` because some project's
+	// .siloconf listed it — in that case silo only handles the command inside
+	// projects that claim it, and shim invocations elsewhere fall through to
+	// the next instance on PATH (pyenv-style).
+	PinnedGlobally bool              `yaml:"pinnedGlobally,omitempty"`
+	Shims          []ShimMapping     `yaml:"shims,omitempty"`
+	Cache          []CacheMount      `yaml:"cache,omitempty"`
+	Workdir        string            `yaml:"workdir,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty"`
 	// PassEnv lists host env var names copied into the guest when set. Used by
 	// registry entries to declare the credential env their tool expects (e.g.
 	// claude-code → ANTHROPIC_API_KEY) so the tool works out of the box without

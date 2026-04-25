@@ -4,6 +4,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -38,12 +39,18 @@ func printInstalled() error {
 	if err != nil {
 		return err
 	}
+	return renderInstalled(os.Stdout, cfg)
+}
+
+// renderInstalled writes the `silo list` table to w. Pulled out so tests can
+// drive it with a hand-built GlobalConfig.
+func renderInstalled(w io.Writer, cfg *config.GlobalConfig) error {
 	if len(cfg.Tools) == 0 {
-		fmt.Println("No tools installed. Try: silo install python")
-		return nil
+		_, err := fmt.Fprintln(w, "No tools installed. Try: silo install python")
+		return err
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "TOOL\tIMAGE\tSHIMS")
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "TOOL\tIMAGE\tPINNED\tSHIMS")
 	names := make([]string, 0, len(cfg.Tools))
 	for k := range cfg.Tools {
 		names = append(names, k)
@@ -55,9 +62,17 @@ func printInstalled() error {
 		for _, s := range t.Shims {
 			shimNames = append(shimNames, s.String())
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", name, t.Image, strings.Join(shimNames, ", "))
+		// PINNED indicates whether shim invocations of this tool always
+		// dispatch into silo (yes — `silo install`) or fall through to the
+		// next instance on PATH outside projects that claim it (no — `silo
+		// sync`-installed). See `silo pin` / `silo unpin` to flip.
+		pinned := "no"
+		if t.PinnedGlobally {
+			pinned = "yes"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, t.Image, pinned, strings.Join(shimNames, ", "))
 	}
-	return w.Flush()
+	return tw.Flush()
 }
 
 func printAvailable() error {

@@ -133,8 +133,13 @@ func (m *Manager) ListShims() ([]string, error) {
 
 func (m *Manager) writeShim(shim config.ShimMapping, toolName string) error {
 	p := filepath.Join(m.dir, shim.HostCommand)
+	// _SILO_SHIM_DISPATCH=1 marks this invocation as having entered silo
+	// through a PATH shim (vs. the user typing `silo run ...`). The run
+	// command consults the env var to decide whether to fall through to the
+	// next instance on PATH when no project claims the tool and it isn't
+	// globally pinned (pyenv-style behavior).
 	script := fmt.Sprintf(
-		"#!/bin/sh\nexec %q run %s --shim %q -- \"$@\"\n",
+		"#!/bin/sh\nexec env _SILO_SHIM_DISPATCH=1 %q run %s --shim %q -- \"$@\"\n",
 		m.binaryPath, toolName, shim.ContainerCommand,
 	)
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
