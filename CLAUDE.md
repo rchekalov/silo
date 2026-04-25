@@ -47,6 +47,8 @@ silo list --available                # show all registry tools
 silo install python@3.12             # install a specific version (globally)
 silo run --timing python -c "print('hello')"   # silo flags before the tool name; everything after is the inner command
                                                 # legacy `silo run python -- -c "..."` still works
+silo run node npm run dev                       # sibling shim auto-promote: execs `npm run dev`, not `node npm run dev`
+                                                # cross-tool shims (e.g. `silo run node python foo.py`) emit a stderr hint instead
 silo config ports add node 3000:3000 # add port forwarding to .siloconf
 silo config network allow node '*.npmjs.org'  # allow a domain
 silo config show                      # show merged project config

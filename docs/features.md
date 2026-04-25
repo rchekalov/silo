@@ -7,6 +7,7 @@ Complete list of what silo can do today (v0.4.0).
 Every tool runs in its own Apple Container micro-VM. No access to SSH keys, cloud credentials, or other host data.
 
 - `silo run python script.py` — run a command in an ephemeral VM (silo flags before the tool, command after; legacy `silo run python -- script.py` still works)
+- `silo run node npm run dev` — when the first arg is a sibling shim of the tool (e.g. `npm`/`npx` for `node`, `pip` for `python`), it's auto-promoted to the entrypoint, so this execs `npm run dev`, not `node npm run dev`. Cross-tool shims emit a stderr hint instead of rewriting.
 - `silo shell python` — interactive shell inside the container
 - `silo python script.py` — shorthand (auto-expands to `silo run python script.py`)
 - `--timing` flag on run — shows config/runtime/VM timing breakdown

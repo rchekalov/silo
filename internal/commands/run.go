@@ -4,6 +4,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -69,6 +70,10 @@ func runRun(_ *cobra.Command, args []string) error {
 		command = resolvedShim
 	}
 
+	if runShim == "" && resolvedShim == "" {
+		command, passthrough = applySiblingShim(cfg, tool, command, passthrough, os.Stderr)
+	}
+
 	ws, err := config.ResolveWorkspace("")
 	if err != nil {
 		return err
@@ -114,4 +119,40 @@ func runRun(_ *cobra.Command, args []string) error {
 		os.Exit(int(exit))
 	}
 	return nil
+}
+
+// applySiblingShim implements Docker-style entrypoint override when the first
+// passthrough arg is a known shim. If it's a shim of the same tool, promote it
+// to command and shift it off passthrough. If it's a shim of a different tool
+// only, write a one-line hint to stderrW and leave args unchanged.
+func applySiblingShim(
+	cfg *config.GlobalConfig,
+	tool, command string,
+	passthrough []string,
+	stderrW io.Writer,
+) (string, []string) {
+	if len(passthrough) == 0 {
+		return command, passthrough
+	}
+	arg0 := passthrough[0]
+	if arg0 == "" || arg0 == command || arg0 == tool || strings.HasPrefix(arg0, "-") {
+		return command, passthrough
+	}
+	matches := cfg.ResolveShimAll(arg0)
+	if len(matches) == 0 {
+		return command, passthrough
+	}
+	for _, m := range matches {
+		if m == tool {
+			return arg0, passthrough[1:]
+		}
+	}
+	rest := ""
+	if len(passthrough) > 1 {
+		rest = " " + strings.Join(passthrough[1:], " ")
+	}
+	fmt.Fprintf(stderrW,
+		"silo: hint: %q is a shim of %s, not %s. Did you mean: silo run %s%s\n",
+		arg0, strings.Join(matches, ", "), tool, arg0, rest)
+	return command, passthrough
 }
