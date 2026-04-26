@@ -4,6 +4,10 @@
 
 > **v0.4.0 — alpha.** macOS 26+ / Apple Silicon only. Expect rough edges.
 
+<p align="center">
+  <img src="images/python-quickstart.gif" alt="silo init then silo python app.py — kernel reports Linux on a macOS host" width="720" />
+</p>
+
 Silo wraps [Apple Containers](https://github.com/apple/containerization) to run development tools inside ephemeral lightweight VMs. Package managers, interpreters, and compilers work as expected — but each invocation runs isolated with no access to your SSH keys, cloud credentials, or other sensitive data.
 
 ## Why
