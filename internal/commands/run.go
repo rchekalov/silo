@@ -27,20 +27,22 @@ var runCmd = &cobra.Command{
 }
 
 var (
-	runShim   string
-	runTiming bool
+	runShim     string
+	runTiming   bool
+	runSSHAgent bool
 )
 
 // Flag tables consumed by cmd/silo/main.go to split argv into silo flags +
 // tool name + pass-through. Keep in sync with the Flags() registrations below.
 var (
 	RunValueFlags = []string{"shim"}
-	RunBoolFlags  = []string{"timing"}
+	RunBoolFlags  = []string{"timing", "ssh-agent"}
 )
 
 func init() {
 	runCmd.Flags().StringVar(&runShim, "shim", "", "override shim command")
 	runCmd.Flags().BoolVar(&runTiming, "timing", false, "print timing info")
+	runCmd.Flags().BoolVar(&runSSHAgent, "ssh-agent", false, "forward $SSH_AUTH_SOCK into the guest (host private keys never enter the VM)")
 	addCommand(runCmd)
 }
 
@@ -101,6 +103,10 @@ func runRun(_ *cobra.Command, args []string) error {
 		if !projectClaims && !def.PinnedGlobally {
 			return execNextOnPath(command, passthrough)
 		}
+	}
+
+	if runSSHAgent {
+		def.PassSshAgent = true
 	}
 
 	if runTiming {

@@ -33,6 +33,15 @@ type HostEntry struct {
 	Hostnames []string
 }
 
+// SocketSpec is a host→guest Unix domain socket relay. Apple Containerization
+// runs the vsock pump automatically when the container has sockets configured.
+// Used for SSH agent forwarding ($SSH_AUTH_SOCK) — host private keys never
+// enter the guest filesystem; only the agent protocol is relayed.
+type SocketSpec struct {
+	HostSource       string // path on the host (e.g., $SSH_AUTH_SOCK)
+	GuestDestination string // path inside the guest (e.g., /run/silo/ssh-agent.sock)
+}
+
 // ContainerConfig mirrors SBContainerConfig. All fields are snake-case in C;
 // here they use Go idioms. Convert via marshalContainerConfig.
 type ContainerConfig struct {
@@ -50,6 +59,7 @@ type ContainerConfig struct {
 	DNSNameservers   []string
 	HostEntries      []HostEntry
 	AutoInjectHost   bool // inject gateway IP as "host.silo.internal"
+	Sockets          []SocketSpec
 }
 
 // ExecConfig mirrors SBExecConfig.

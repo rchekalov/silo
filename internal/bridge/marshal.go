@@ -77,6 +77,24 @@ func (m *cMemory) cMountArray(specs []MountSpec) (*C.SBMount, C.uint32_t) {
 	return (*C.SBMount)(arr), C.uint32_t(len(specs))
 }
 
+// cSocketArray allocates an SBUnixSocket[count] array.
+func (m *cMemory) cSocketArray(specs []SocketSpec) (*C.SBUnixSocket, C.uint32_t) {
+	if len(specs) == 0 {
+		return nil, 0
+	}
+	size := C.size_t(unsafe.Sizeof(C.SBUnixSocket{})) * C.size_t(len(specs))
+	arr := C.malloc(size)
+	m.ptrs = append(m.ptrs, arr)
+	C.memset(arr, 0, size)
+	elemSize := unsafe.Sizeof(C.SBUnixSocket{})
+	for i, s := range specs {
+		slot := (*C.SBUnixSocket)(unsafe.Add(arr, uintptr(i)*elemSize))
+		slot.host_source = m.cString(s.HostSource)
+		slot.guest_destination = m.cString(s.GuestDestination)
+	}
+	return (*C.SBUnixSocket)(arr), C.uint32_t(len(specs))
+}
+
 // cHostEntryArray allocates an SBHostEntry[count] array.
 func (m *cMemory) cHostEntryArray(entries []HostEntry) (*C.SBHostEntry, C.uint32_t) {
 	if len(entries) == 0 {
@@ -131,6 +149,9 @@ func buildContainerConfig(cfg ContainerConfig) (*C.SBContainerConfig, *cMemory) 
 	out.host_entries = hostsPtr
 	out.host_entry_count = hostCount
 	out.auto_inject_host_silo = C.bool(cfg.AutoInjectHost)
+	socketsPtr, socketCount := m.cSocketArray(cfg.Sockets)
+	out.sockets = socketsPtr
+	out.socket_count = socketCount
 	return out, m
 }
 

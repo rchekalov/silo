@@ -81,6 +81,7 @@ Found by walking up from current directory. Merged with global siloconf (`~/.sil
 
 - `pass_env` — forward host env vars into sandbox (e.g., `GITHUB_TOKEN`)
 - `pass_files` — mount host files read-only (e.g., `.npmrc`)
+- `passSshAgent` — forward `$SSH_AUTH_SOCK` into the guest at `/run/silo/ssh-agent.sock` so `git clone git@...` and other SSH-based tools work inside the sandbox. Apple Containerization runs a vsock relay; **host private keys never enter the guest** — only the agent protocol is relayed. Prefer this over `passFiles: [.ssh/id_ed25519]`, which copies the actual key material into the guest filesystem and breaks isolation. Toggle ad-hoc with `silo run --ssh-agent <tool> ...`.
 - `mount.mode` / `mount.exclude` — control workspace mount behavior
 - `overrides.<tool>.image` — per-project image/version override
 - `overrides.<tool>.env` — per-project environment variables
@@ -91,6 +92,7 @@ Found by walking up from current directory. Merged with global siloconf (`~/.sil
 - `overrides.<tool>.cpus` / `memoryMB` / `rootfsSizeMB` — per-project resource bumps (e.g. a Vue/Vite build needs ≥ 6 GB RAM)
 - `overrides.<tool>.workdir` — guest working directory (e.g. `/app` instead of `/workspace`)
 - `overrides.<tool>.passEnv` — host env vars forwarded only for this tool (e.g. `ANTHROPIC_API_KEY` only for `claude-code`)
+- `overrides.<tool>.passSshAgent` — enable SSH agent forwarding only for this tool (logical OR with the project-level / registry-level value)
 - `overrides.<tool>.lsp` — pin a language-server install command, add LSP-only cache mounts, tweak LSP env
 
 Not overridable (registry/engine concerns): `shims`, `requires`, `buildRootfs`, `buildScript`, `buildScope`, `buildProjectRoot`.

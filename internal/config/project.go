@@ -55,6 +55,12 @@ type ToolOverride struct {
 	// `claude-code` should see ANTHROPIC_API_KEY). Merged with the base
 	// ToolDefinition.PassEnv and the project-level PassEnv.
 	PassEnv []string `yaml:"passEnv,omitempty"`
+	// PassSshAgent enables SSH agent forwarding for this tool only. ORed with
+	// the project-level PassSshAgent and the registry's ToolDefinition.PassSshAgent
+	// — any source true means forwarding is on. Cannot force-off here; if you
+	// want forwarding everywhere except one tool, leave the project-level off
+	// and opt in per-tool.
+	PassSshAgent bool `yaml:"passSshAgent,omitempty"`
 	// LSP overrides bits of the registry's LspConfig: pin a language-server
 	// install command, add LSP-only cache mounts, tweak LSP env. Non-empty
 	// fields win over the base; nil sub-fields leave the base intact.
@@ -66,12 +72,17 @@ type ProjectConfig struct {
 	// Tools lists the tools this project depends on. Keys in Overrides also count;
 	// see ProjectTools. Declaring a tool here lets the user pin it without a
 	// customization block, which is the common case.
-	Tools     []string                `yaml:"tools,omitempty"`
-	PassEnv   []string                `yaml:"passEnv,omitempty"`
-	PassFiles []string                `yaml:"passFiles,omitempty"`
-	Mount     *MountConfig            `yaml:"mount,omitempty"`
-	Overrides map[string]ToolOverride `yaml:"overrides,omitempty"`
-	Cache     *CacheConfig            `yaml:"cache,omitempty"`
+	Tools     []string `yaml:"tools,omitempty"`
+	PassEnv   []string `yaml:"passEnv,omitempty"`
+	PassFiles []string `yaml:"passFiles,omitempty"`
+	// PassSshAgent enables SSH agent forwarding for every tool in this project.
+	// Mounts the host's $SSH_AUTH_SOCK into the guest so `git clone git@...` and
+	// `ssh-add -l` work without copying private keys. Per-tool ToolOverride.PassSshAgent
+	// is ORed on top — any source true means forwarding is on for that tool.
+	PassSshAgent bool                    `yaml:"passSshAgent,omitempty"`
+	Mount        *MountConfig            `yaml:"mount,omitempty"`
+	Overrides    map[string]ToolOverride `yaml:"overrides,omitempty"`
+	Cache        *CacheConfig            `yaml:"cache,omitempty"`
 	// ProjectID is an optional stable identifier (e.g. UUID/ULID) for this
 	// project. Without it, silo keys per-machine state under a hash of the
 	// project's current absolute path, which means renaming or moving the
@@ -232,10 +243,11 @@ func (c *ProjectConfig) Save(directory string) error {
 // conflicts. PassEnv / PassFiles are deduplicated preserving order.
 func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
 	out := ProjectConfig{
-		Tools:     dedupMerge(base.Tools, c.Tools),
-		PassEnv:   dedupMerge(base.PassEnv, c.PassEnv),
-		PassFiles: dedupMerge(base.PassFiles, c.PassFiles),
-		ProjectID: c.ProjectID,
+		Tools:        dedupMerge(base.Tools, c.Tools),
+		PassEnv:      dedupMerge(base.PassEnv, c.PassEnv),
+		PassFiles:    dedupMerge(base.PassFiles, c.PassFiles),
+		PassSshAgent: base.PassSshAgent || c.PassSshAgent,
+		ProjectID:    c.ProjectID,
 	}
 	if out.ProjectID == "" {
 		out.ProjectID = base.ProjectID
@@ -305,6 +317,9 @@ func (c *ProjectConfig) MergeOver(base *ProjectConfig) ProjectConfig {
 		}
 		if len(override.PassEnv) > 0 {
 			existing.PassEnv = dedupMerge(existing.PassEnv, override.PassEnv)
+		}
+		if override.PassSshAgent {
+			existing.PassSshAgent = true
 		}
 		if override.LSP != nil {
 			existing.LSP = mergeLspConfig(existing.LSP, override.LSP)
@@ -506,7 +521,7 @@ func (c *ProjectConfig) cleanupEmpty() {
 		if len(o.Cache) == 0 {
 			o.Cache = nil
 		}
-		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 && len(o.PostInstall) == 0 && len(o.Cache) == 0 && o.CPUs == 0 && o.MemoryMB == 0 && o.RootfsSizeMB == 0 && o.Workdir == "" && len(o.PassEnv) == 0 && o.LSP == nil {
+		if o.Image == "" && len(o.Env) == 0 && o.Network == nil && len(o.Ports) == 0 && len(o.PostInstall) == 0 && len(o.Cache) == 0 && o.CPUs == 0 && o.MemoryMB == 0 && o.RootfsSizeMB == 0 && o.Workdir == "" && len(o.PassEnv) == 0 && !o.PassSshAgent && o.LSP == nil {
 			delete(c.Overrides, tool)
 			continue
 		}

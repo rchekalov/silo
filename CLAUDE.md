@@ -47,6 +47,8 @@ silo list --available                # show all registry tools
 silo install python@3.12             # install a specific version (globally)
 silo run --timing python -c "print('hello')"   # silo flags before the tool name; everything after is the inner command
                                                 # legacy `silo run python -- -c "..."` still works
+silo run --ssh-agent node npm i                 # forward $SSH_AUTH_SOCK so private git+ssh URLs resolve
+                                                # host keys never enter the guest — only the agent protocol relays
 silo run node npm run dev                       # sibling shim auto-promote: execs `npm run dev`, not `node npm run dev`
                                                 # cross-tool shims (e.g. `silo run node python foo.py`) emit a stderr hint instead
 silo config ports add node 3000:3000 # add port forwarding to .siloconf
@@ -422,6 +424,11 @@ Searched by walking up from cwd. Merged with global siloconf (`~/.silo/siloconf`
 tools: [python, node]      # declares the project's required tools (silo sync uses this)
 pass_env: [GITHUB_TOKEN]
 pass_files: [.npmrc]
+passSshAgent: true         # forward $SSH_AUTH_SOCK into every tool in this project
+                           # (host private keys never leave the host; only the agent protocol relays).
+                           # Use this — NOT `passFiles: [.ssh/id_ed25519]`, which copies the
+                           # actual key material into the guest and breaks silo's isolation guarantee.
+                           # Per-tool override under overrides.<tool>.passSshAgent ORs on top.
 overrides:
   python:
     env:
@@ -457,12 +464,13 @@ overrides:
 
 The project's tool set is the union of `tools:` and the keys of `overrides:`. `silo sync` uses this set to decide what to install/pull; `silo clean` uses it to decide what artifacts to reclaim.
 
-Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `lsp`. Merge semantics:
+Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `passSshAgent`, `lsp`. Merge semantics:
 
 - **Scalars** (`image`, `workdir`, `cpus`, `memoryMB`, `rootfsSizeMB`): non-empty / non-zero overlay wins.
 - **Maps** (`env`): per-key overlay-wins on top of base.
 - **Lists** (`postInstall`): base first, overlay appended.
 - **Lists** (`passEnv`): base + overlay deduped, order preserved. Use this for credentials scoped to one tool (e.g. only `claude-code` should see `ANTHROPIC_API_KEY`); the top-level `passEnv:` covers all tools.
+- **Bools** (`passSshAgent`): logical OR — any of (registry, project-level, per-tool override) being true turns it on. Cannot force-off in an override; if you want forwarding everywhere except one tool, leave the project-level off and opt in per-tool.
 - **Cache mounts**: deduplicated by guest path (overlay host wins).
 - **Ports**: overlay replaces the list wholesale if set.
 - **Network**: overlay replaces the struct wholesale if set.
@@ -544,6 +552,7 @@ Same format as project `.siloconf`. Applied as fallback when no project-level co
 | `workdir` | string | /workspace | Container working directory |
 | `env` | map[string]string | nil | Default env vars |
 | `passEnv` | []string | nil | Host env vars copied into the guest when set (e.g. `ANTHROPIC_API_KEY` for claude-code). Merged with the project-level `passEnv` at runtime. |
+| `passSshAgent` | bool | false | Forward `$SSH_AUTH_SOCK` from the host into the guest at `/run/silo/ssh-agent.sock`. Apple Containerization runs a vsock relay under the hood — host private keys never enter the guest. Use this instead of `passFiles: [.ssh/id_ed25519]`, which copies the actual key material into the guest filesystem and breaks isolation. Toggle ad-hoc with `silo run --ssh-agent <tool> ...`. |
 | `cpus` | int | 2 | VM CPU count |
 | `memory_mb` | uint64 | 2048 | VM memory |
 | `rootfs_size_mb` | uint64 | 2048 | Root filesystem size |

@@ -60,6 +60,7 @@ echo ""
 echo "--- Isolation ---"
 run_test "file-isolation" "$SCRIPT_DIR/isolation/file-isolation.sh" "python"
 run_test "env-isolation" "$SCRIPT_DIR/isolation/env-isolation.sh" "python"
+run_test "ssh-agent-forwarding" "$SCRIPT_DIR/isolation/ssh-agent-forwarding.sh" "python"
 
 echo ""
 echo "--- Execution ---"

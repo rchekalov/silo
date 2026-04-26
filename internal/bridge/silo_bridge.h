@@ -35,6 +35,15 @@ typedef struct {
     const char* const* hostnames;          // NULL-terminated array
 } SBHostEntry;
 
+// Unix domain socket relay (host ↔ guest). Apple Containerization runs the
+// vsock pump automatically when the container's `sockets:` config is set.
+// Direction is implicit "into the guest" — silo's only use case (forwarding
+// $SSH_AUTH_SOCK) doesn't need outOf.
+typedef struct {
+    const char* host_source;               // path to host socket (e.g., $SSH_AUTH_SOCK)
+    const char* guest_destination;         // path inside the guest (e.g., /run/silo/ssh-agent.sock)
+} SBUnixSocket;
+
 // Container configuration.
 typedef struct {
     int32_t cpus;
@@ -53,6 +62,8 @@ typedef struct {
     const SBHostEntry* host_entries;
     uint32_t host_entry_count;
     bool auto_inject_host_silo;
+    const SBUnixSocket* sockets;
+    uint32_t socket_count;
 } SBContainerConfig;
 
 // Exec configuration.

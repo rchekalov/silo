@@ -59,6 +59,11 @@ struct SBHostEntry {
     var hostnames: UnsafePointer<UnsafePointer<CChar>?>
 }
 
+struct SBUnixSocket {
+    var host_source: UnsafePointer<CChar>
+    var guest_destination: UnsafePointer<CChar>
+}
+
 struct SBContainerConfig {
     var cpus: Int32
     var memory_bytes: UInt64
@@ -76,6 +81,8 @@ struct SBContainerConfig {
     var host_entries: UnsafePointer<SBHostEntry>?
     var host_entry_count: UInt32
     var auto_inject_host_silo: Bool
+    var sockets: UnsafePointer<SBUnixSocket>?
+    var socket_count: UInt32
 }
 
 struct SBExecConfig {

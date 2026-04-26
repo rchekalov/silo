@@ -112,7 +112,13 @@ type ToolDefinition struct {
 	// claude-code → ANTHROPIC_API_KEY) so the tool works out of the box without
 	// the user wiring passEnv in every project's .siloconf. Merged with the
 	// project-level passEnv at runtime.
-	PassEnv      []string       `yaml:"passEnv,omitempty"`
+	PassEnv []string `yaml:"passEnv,omitempty"`
+	// PassSshAgent forwards $SSH_AUTH_SOCK from the host into the guest at
+	// /run/silo/ssh-agent.sock. Host private keys never enter the VM — the
+	// guest only sees the agent protocol. Use this instead of `passFiles:
+	// [.ssh/id_ed25519]`, which copies the actual key material into the
+	// guest filesystem and defeats silo's isolation guarantee.
+	PassSshAgent bool           `yaml:"passSshAgent,omitempty"`
 	CPUs         int32          `yaml:"cpus,omitempty"`
 	MemoryMB     uint64         `yaml:"memoryMB,omitempty"`
 	RootfsSizeMB uint64         `yaml:"rootfsSizeMB,omitempty"`
@@ -236,6 +242,9 @@ func ApplyOverride(def ToolDefinition, o ToolOverride) ToolDefinition {
 			merged = append(merged, k)
 		}
 		out.PassEnv = merged
+	}
+	if o.PassSshAgent {
+		out.PassSshAgent = true
 	}
 	if o.LSP != nil {
 		out.LSP = mergeLspConfig(def.LSP, o.LSP)

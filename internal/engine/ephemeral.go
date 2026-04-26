@@ -190,6 +190,10 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 		env = appendEnv(env, "https_proxy", proxyURL)
 		env = appendEnv(env, "NO_PROXY", "localhost,127.0.0.1")
 	}
+	hostSshSock, sshAgentOn := sshAgentSocket(opts.Tool)
+	if sshAgentOn {
+		env = appendEnv(env, "SSH_AUTH_SOCK", sshAgentGuestPath)
+	}
 	effectiveCache := mergeCacheMounts(opts.Tool)
 
 	mounts, err := buildMounts(opts.Tool, opts.ProjectDir, effectiveCache, opts.ProjectConfig)
@@ -216,6 +220,12 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 	cfg.WorkingDirectory = opts.Tool.Workdir
 	cfg.EnvVars = env
 	cfg.Mounts = mounts
+	if sshAgentOn {
+		cfg.Sockets = []bridge.SocketSpec{{
+			HostSource:       hostSshSock,
+			GuestDestination: sshAgentGuestPath,
+		}}
+	}
 	switch {
 	case captureStdout:
 		cfg.StdoutFD = int32(capturePipeWrite.Fd())
@@ -350,6 +360,10 @@ func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 		env = appendEnv(env, "https_proxy", proxyURL)
 		env = appendEnv(env, "NO_PROXY", "localhost,127.0.0.1")
 	}
+	hostSshSock, sshAgentOn := sshAgentSocket(opts.Tool)
+	if sshAgentOn {
+		env = appendEnv(env, "SSH_AUTH_SOCK", sshAgentGuestPath)
+	}
 	effectiveCache := mergeCacheMounts(opts.Tool)
 	mounts, err := buildMounts(opts.Tool, opts.ProjectDir, effectiveCache, opts.ProjectConfig)
 	if err != nil {
@@ -364,6 +378,12 @@ func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 	cfg.WorkingDirectory = opts.Tool.Workdir
 	cfg.EnvVars = env
 	cfg.Mounts = mounts
+	if sshAgentOn {
+		cfg.Sockets = []bridge.SocketSpec{{
+			HostSource:       hostSshSock,
+			GuestDestination: sshAgentGuestPath,
+		}}
+	}
 	if isTTY {
 		cfg.StdoutFD, cfg.StderrFD = -1, -1
 		cfg.UseTerminal = true
@@ -613,9 +633,17 @@ func applyResourceOverrides(tool *config.ToolDefinition, name string, pc *config
 	if pc == nil {
 		return
 	}
+	// Project-wide passSshAgent applies to every tool; per-tool override below
+	// can OR it on but never force off.
+	if pc.PassSshAgent {
+		tool.PassSshAgent = true
+	}
 	o, ok := pc.Overrides[name]
 	if !ok {
 		return
+	}
+	if o.PassSshAgent {
+		tool.PassSshAgent = true
 	}
 	if o.CPUs != 0 {
 		tool.CPUs = o.CPUs
@@ -776,6 +804,31 @@ func buildMounts(
 		}
 	}
 	return mounts, nil
+}
+
+// sshAgentGuestPath is the in-guest path where silo materializes the relayed
+// $SSH_AUTH_SOCK socket. Apple Containerization's UnixSocketConfiguration
+// runs the vsock pump under the hood; child processes inherit
+// SSH_AUTH_SOCK=<this> and connect transparently.
+const sshAgentGuestPath = "/run/silo/ssh-agent.sock"
+
+// sshAgentSocket returns (hostSocketPath, true) when SSH agent forwarding is
+// enabled AND the host actually has $SSH_AUTH_SOCK set + reachable.
+// Forwarding is silently skipped when the host has no agent — silo can't
+// materialize what doesn't exist, and failing the run would break headless /
+// CI invocations that opted in via project config.
+func sshAgentSocket(tool config.ToolDefinition) (hostSocket string, ok bool) {
+	if !tool.PassSshAgent {
+		return "", false
+	}
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return "", false
+	}
+	if _, err := os.Stat(sock); err != nil {
+		return "", false
+	}
+	return sock, true
 }
 
 // enableISIG flips ISIG on stdin so Ctrl+C still produces SIGINT in raw mode.

@@ -141,6 +141,14 @@ public func sb_manager_create_container_from_ref(
             hostEntries.append((ip, names))
         }
     }
+    // Copy socket relays (host ↔ guest unix sockets, .into direction).
+    var socketSpecs: [(source: String, dest: String)] = []
+    if let socketsPtr = config.pointee.sockets {
+        for i in 0..<Int(config.pointee.socket_count) {
+            let s = socketsPtr[i]
+            socketSpecs.append((String(cString: s.host_source), String(cString: s.guest_destination)))
+        }
+    }
 
     Task {
         do {
@@ -172,6 +180,16 @@ public func sb_manager_create_container_from_ref(
                         }
                     }
                     swiftConfig.mounts.append(mount)
+                }
+
+                for s in socketSpecs {
+                    swiftConfig.sockets.append(
+                        UnixSocketConfiguration(
+                            source: URL(fileURLWithPath: s.source),
+                            destination: URL(fileURLWithPath: s.dest),
+                            direction: .into
+                        )
+                    )
                 }
 
                 if !dnsServers.isEmpty {
@@ -274,6 +292,13 @@ public func sb_manager_create_container_from_image(
             hostEntries.append((String(cString: e.ip_address), readStringArray(e.hostnames)))
         }
     }
+    var socketSpecs: [(source: String, dest: String)] = []
+    if let socketsPtr = config.pointee.sockets {
+        for i in 0..<Int(config.pointee.socket_count) {
+            let s = socketsPtr[i]
+            socketSpecs.append((String(cString: s.host_source), String(cString: s.guest_destination)))
+        }
+    }
 
     Task {
         do {
@@ -296,6 +321,16 @@ public func sb_manager_create_container_from_image(
                         mount = m.opts.isEmpty ? .share(source: m.source, destination: m.dest) : .share(source: m.source, destination: m.dest, options: m.opts)
                     }
                     swiftConfig.mounts.append(mount)
+                }
+
+                for s in socketSpecs {
+                    swiftConfig.sockets.append(
+                        UnixSocketConfiguration(
+                            source: URL(fileURLWithPath: s.source),
+                            destination: URL(fileURLWithPath: s.dest),
+                            direction: .into
+                        )
+                    )
                 }
 
                 if !dnsServers.isEmpty { swiftConfig.dns = DNS(nameservers: dnsServers) }
