@@ -21,7 +21,7 @@ Use this skill when the user wants to:
 ## Mental model
 
 - `silo install <tool>` puts a shim in `~/.silo/bin/`; afterwards `python script.py` transparently runs `silo run python script.py` inside a VM.
-- `.siloconf` (YAML, walks up from cwd; global fallback at `~/.silo/siloconf`) controls what the sandbox can see: `passEnv`, `passFiles`, `overrides` (per-tool `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `lsp`).
+- `silo.toml` (TOML, walks up from cwd; global fallback at `~/.silo/silo.toml`) controls what the sandbox can see: `passEnv`, `passFiles`, `overrides` (per-tool `image`, `env`, `network`, `ports`, `postInstall`, `cache`, `cpus`, `memoryMB`, `rootfsSizeMB`, `workdir`, `passEnv`, `lsp`).
 - Each run is a fresh VM. Packages installed with `pip install foo` inside a run vanish when it exits — use `silo setup` or per-tool cache mounts to persist state.
 - Rootfs is cached per OCI digest at `~/.silo/rootfs-cache/` (APFS clonefile for sub-second starts). Cold entries can be zstd-compressed to save ~4× disk.
 
@@ -44,12 +44,12 @@ Use this skill when the user wants to:
 
 | Intent | Command |
 |---|---|
-| Auto-detect tools + generate `.siloconf` | `silo init` |
+| Auto-detect tools + generate `silo.toml` | `silo init` |
 | Non-interactive init | `silo init --tool node --tool python --port 3000 --pass-env GITHUB_TOKEN --no-interactive` |
 | Show merged config | `silo config show` |
 | Add port forwarding | `silo config add-port node 3000:3000` |
 | Allow a domain through the proxy | `silo config network allow node '*.npmjs.org'` |
-| Reconcile environment to `.siloconf` | `silo pull` *(installs missing tools, warms cache; safe to re-run)* |
+| Reconcile environment to `silo.toml` | `silo pull` *(installs missing tools, warms cache; safe to re-run)* |
 
 ### Persisting installs into the rootfs
 
@@ -91,56 +91,48 @@ GC also runs automatically once per `silo run` — users rarely need to invoke i
 | Run a language server in the sandbox | `silo lsp python` (pyright) / `lsp node` (tsserver) / `lsp rust` / `lsp go` |
 | Generate IDE config | `silo ide vscode` / `silo ide zed` / `silo ide neovim` |
 
-## Authoring `.siloconf`
+## Authoring `silo.toml`
 
-Writing a `.siloconf` is the most common non-trivial task. Default template:
+Writing a `silo.toml` is the most common non-trivial task. Default template:
 
-```yaml
+```toml
 # Environment variables forwarded from the host (only these are visible inside the VM)
-passEnv:
-  - GITHUB_TOKEN
-  - DATABASE_URL
+passEnv = ["GITHUB_TOKEN", "DATABASE_URL"]
 
 # Host files mounted read-only into /workspace/
-passFiles:
-  - .npmrc
-  - .pypirc
-
-# Directories excluded from the project mount (saves mount time + memory)
-mount:
-  exclude:
-    - node_modules
-    - .venv
-    - __pycache__
+passFiles = [".npmrc", ".pypirc"]
 
 # Tools required by this project — `silo pull` installs any that are missing
-tools: [node, python]
+tools = ["node", "python"]
 
-overrides:
-  node:
-    network:
-      hostAccess: true            # access host DB/APIs via host.silo.internal
-      proxy:
-        allow:                    # HTTPS/HTTPS allowlist (deny everything else)
-          - registry.npmjs.org
-          - "*.github.com"
-    ports:
-      - host: 3000
-        guest: 3000
-  python:
-    image: docker.io/library/python:3.11-slim   # pin a version for this project
-    env:
-      PYTHONPATH: /workspace/src
+# Directories excluded from the project mount (saves mount time + memory)
+[mount]
+exclude = ["node_modules", ".venv", "__pycache__"]
+
+[overrides.node.network]
+hostAccess = true            # access host DB/APIs via host.silo.internal
+
+[overrides.node.network.proxy]
+allow = ["registry.npmjs.org", "*.github.com"]    # HTTPS allowlist (deny everything else)
+
+[[overrides.node.ports]]
+host = 3000
+guest = 3000
+
+[overrides.python]
+image = "docker.io/library/python:3.11-slim"   # pin a version for this project
+env = { PYTHONPATH = "/workspace/src" }
 
 # Optional: cache size/age caps. Omit for defaults (8 GiB rootfs / 4 GiB per tool / 60d age).
-cache:
-  rootfs:
-    maxSizeMB: 8192
-    maxAgeDays: 60
-  tools:
-    maxSizeMB: 4096
-    perMount:
-      rust/cargo: 8192
+[cache.rootfs]
+maxSizeMB = 8192
+maxAgeDays = 60
+
+[cache.tools]
+maxSizeMB = 4096
+
+[cache.tools.perMount]
+"rust/cargo" = 8192
 ```
 
 Decision rules when authoring:
@@ -159,8 +151,8 @@ Decision rules when authoring:
 
 ```bash
 silo install claude-code
-cat > .siloconf << 'EOF'
-passEnv: [ANTHROPIC_API_KEY, GITHUB_TOKEN]
+cat > silo.toml << 'EOF'
+passEnv = ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]
 EOF
 silo claude                         # fully isolated from ~/.ssh, ~/.aws, keychain
 ```
@@ -171,14 +163,16 @@ Inside the sandbox Claude Code sees `/workspace/` (the project) and `/root/.clau
 
 ```bash
 silo install python
-cat > .siloconf << 'EOF'
-overrides:
-  python:
-    network:
-      hostAccess: true
-      proxy:
-        allow: [pypi.org, "*.pythonhosted.org"]
-    ports: [{host: 8000, guest: 8000}]
+cat > silo.toml << 'EOF'
+[overrides.python.network]
+hostAccess = true
+
+[overrides.python.network.proxy]
+allow = ["pypi.org", "*.pythonhosted.org"]
+
+[[overrides.python.ports]]
+host = 8000
+guest = 8000
 EOF
 silo build python pip install -r requirements.txt        # bakes deps into rootfs
 python manage.py runserver                                # run normally via shim
@@ -186,11 +180,10 @@ python manage.py runserver                                # run normally via shi
 
 ### Pinning a tool version
 
-```yaml
-# .siloconf — e.g., keep this project on python 3.11 while global default is 3.12
-overrides:
-  python:
-    image: docker.io/library/python:3.11-slim
+```toml
+# silo.toml — e.g., keep this project on python 3.11 while global default is 3.12
+[overrides.python]
+image = "docker.io/library/python:3.11-slim"
 ```
 
 ### Reclaiming disk
@@ -212,8 +205,8 @@ First `silo install` downloads a kernel + Swift toolchain + cross-compiles vmini
 |---|---|
 | Binary exits with code 137 (SIGKILL) | Not codesigned. Use `make install` or `make sign-debug` — never run `go build` output directly. |
 | "couldn't be saved … file with same name already exists" | Stale container dir from crashed run. `silo cache clean --containers` or let the auto-reaper handle it (runs at next `silo run`). |
-| `pip install` / `npm install` fails inside sandbox | Default config blocks network. Add `network.hostAccess: true` + `proxy.allow` to `.siloconf` for that tool, or use `silo setup` which has networking on. |
-| "No such file or directory: /workspace/…" | That path is outside the project root. Only the directory containing `.siloconf` (or cwd if absent) is mounted. |
+| `pip install` / `npm install` fails inside sandbox | Default config blocks network. Add `network.hostAccess = true` + `proxy.allow` to `silo.toml` for that tool, or use `silo setup` which has networking on. |
+| "No such file or directory: /workspace/…" | That path is outside the project root. Only the directory containing `silo.toml` (or cwd if absent) is mounted. |
 | Rootfs cache growing unbounded | Shouldn't happen (auto-GC runs). If it did, `silo cache gc --dry-run` + `silo cache compress`. |
 | Can't reach host `localhost:5432` from sandbox | Use `host.silo.internal:5432`. `localhost` inside the VM is the guest, not the host. |
 | Shim name conflicts with another tool | `silo install` warns; rename via `silo shim <tool> add altname:origname` or change host command. |
@@ -222,8 +215,8 @@ First `silo install` downloads a kernel + Swift toolchain + cross-compiles vmini
 
 ```
 ~/.silo/
-  config.yaml          # installed tools (GlobalConfig)
-  siloconf             # global fallback .siloconf
+  config.toml          # installed tools (GlobalConfig)
+  silo.toml            # global fallback silo.toml
   bin/                 # shims (must be on PATH)
   vmlinux, initfs.ext4 # bootstrap artifacts (~5 min first install)
   images/              # OCI content store (deduped by layer digest)
@@ -237,6 +230,6 @@ First `silo install` downloads a kernel + Swift toolchain + cross-compiles vmini
 
 - Shims are in `~/.silo/bin/`. The user's shell must have this on PATH for transparent use.
 - `silo init` writes `.silo/` to `.gitignore`. Never commit anything under `.silo/` — it's transient cache.
-- `.siloconf` **should** be committed — it's the project's authoritative sandbox declaration.
+- `silo.toml` **should** be committed — it's the project's authoritative sandbox declaration.
 - macOS 26+ / Apple Silicon only. Don't suggest Silo for Linux or Intel Macs.
-- Every silo command is safe to run from any directory. Commands that need project context walk up for `.siloconf`; if missing, they either act globally or bail with a clear message.
+- Every silo command is safe to run from any directory. Commands that need project context walk up for `silo.toml`; if missing, they either act globally or bail with a clear message.

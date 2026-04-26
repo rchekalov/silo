@@ -125,10 +125,8 @@ Silo eliminates this by running Claude Code inside a VM where the host filesyste
 silo install claude-code
 
 # Configure your project
-cat > .siloconf << 'EOF'
-pass_env:
-  - ANTHROPIC_API_KEY
-  - GITHUB_TOKEN
+cat > silo.toml << 'EOF'
+passEnv = ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]
 EOF
 
 # Run Claude Code — fully isolated
@@ -171,21 +169,20 @@ silo claude
 
 If Claude Code needs access to your project's API or a custom registry:
 
-```yaml
-# .siloconf
-overrides:
-  claude-code:
-    network:
-      hostAccess: true
-      proxy:
-        allow:
-          - api.anthropic.com
-          - "*.github.com"
-          - registry.npmjs.org
-          - api.mycompany.com
-          - internal-registry.mycompany.com
-        deny:
-          - "*"
+```toml
+# silo.toml
+[overrides.claude-code.network]
+hostAccess = true
+
+[overrides.claude-code.network.proxy]
+allow = [
+  "api.anthropic.com",
+  "*.github.com",
+  "registry.npmjs.org",
+  "api.mycompany.com",
+  "internal-registry.mycompany.com",
+]
+deny = ["*"]
 ```
 
 ## Available tools
@@ -225,24 +222,23 @@ Select version [1]:
 
 ### Per-project version pinning
 
-Different projects can use different tool versions via `.siloconf` overrides:
+Different projects can use different tool versions via `silo.toml` overrides:
 
 ```bash
 # Project A — uses default Python 3.12
 cd ~/projects/web-app
 python --version  # Python 3.12.x (from silo)
 
-# Project B — pins Python 3.11 in its .siloconf
+# Project B — pins Python 3.11 in its silo.toml
 cd ~/projects/legacy-api
 python --version  # Python 3.11.x (from silo, using project override)
 ```
 
-The `.siloconf` in `legacy-api/` would contain:
+The `silo.toml` in `legacy-api/` would contain:
 
-```yaml
-overrides:
-  python:
-    image: docker.io/library/python:3.11-slim
+```toml
+[overrides.python]
+image = "docker.io/library/python:3.11-slim"
 ```
 
 This also works for Node.js, Go, Rust, and any other tool — just override the `image` field with the desired version tag.
@@ -286,14 +282,14 @@ Pass env vars from host? (comma-separated) GITHUB_TOKEN,DATABASE_URL
 Pass host files? (e.g., .npmrc) .npmrc
 Exclude from mount? [node_modules,.venv]
 
-Created .siloconf
+Created silo.toml
 Added .silo/ to .gitignore
 
 Not installed: python
   Run: silo install python
 ```
 
-This generates a `.siloconf` and suggests installing any missing tools. After that, just use tools normally — shims handle everything transparently:
+This generates a `silo.toml` and suggests installing any missing tools. After that, just use tools normally — shims handle everything transparently:
 
 ```bash
 silo install python         # install the missing tool
@@ -307,111 +303,98 @@ Non-interactive mode for CI/scripting:
 silo init --tool node --tool python --port 3000 --pass-env GITHUB_TOKEN --no-interactive
 ```
 
-### Manual `.siloconf`
+### Manual `silo.toml`
 
-Create a `.siloconf` in your project root to control what the sandbox can access:
+Create a `silo.toml` in your project root to control what the sandbox can access:
 
-```yaml
+```toml
 # Environment variables to pass into the sandbox
-passEnv:
-  - GITHUB_TOKEN
-  - DATABASE_URL
+passEnv = ["GITHUB_TOKEN", "DATABASE_URL"]
 
 # Host files to mount read-only
-passFiles:
-  - .npmrc
-  - .pypirc
+passFiles = [".npmrc", ".pypirc"]
 
 # Directories to exclude from the project mount
-mount:
-  exclude:
-    - node_modules
-    - .venv
+[mount]
+exclude = ["node_modules", ".venv"]
 
 # Per-tool overrides for this project
-overrides:
-  node:
-    network:
-      hostAccess: true
-    ports:
-      - host: 3000
-        guest: 3000
-  python:
-    env:
-      PYTHONPATH: /workspace/src
+[overrides.node.network]
+hostAccess = true
+
+[[overrides.node.ports]]
+host = 3000
+guest = 3000
+
+[overrides.python]
+env = { PYTHONPATH = "/workspace/src" }
 ```
 
 ### Example configurations
 
 **Web app (Node + Python backend):**
 
-```yaml
-# .siloconf
-passEnv:
-  - GITHUB_TOKEN
-  - DATABASE_URL
+```toml
+# silo.toml
+passEnv = ["GITHUB_TOKEN", "DATABASE_URL"]
+passFiles = [".npmrc"]
 
-passFiles:
-  - .npmrc
+[mount]
+exclude = ["node_modules", ".venv", "__pycache__"]
 
-mount:
-  exclude:
-    - node_modules
-    - .venv
-    - __pycache__
+[overrides.node.network]
+hostAccess = true    # access host DB, APIs via host.silo.internal
 
-overrides:
-  node:
-    network:
-      hostAccess: true    # access host DB, APIs via host.silo.internal
-    ports:
-      - host: 3000        # dev server
-        guest: 3000
-      - host: 5173        # Vite HMR
-        guest: 5173
-  python:
-    env:
-      PYTHONPATH: /workspace/src
+[[overrides.node.ports]]
+host = 3000          # dev server
+guest = 3000
+
+[[overrides.node.ports]]
+host = 5173          # Vite HMR
+guest = 5173
+
+[overrides.python]
+env = { PYTHONPATH = "/workspace/src" }
 ```
 
 **Data science project:**
 
-```yaml
-# .siloconf
-overrides:
-  python:
-    image: docker.io/library/python:3.11-slim  # pin version
-    memoryMB: 2048                              # more RAM for pandas/numpy
-    rootfsSizeMB: 4096                          # space for large packages
-    network:
-      hostAccess: true
-    ports:
-      - host: 8888        # Jupyter notebook
-        guest: 8888
+```toml
+# silo.toml
+[overrides.python]
+image = "docker.io/library/python:3.11-slim"  # pin version
+memoryMB = 2048                                # more RAM for pandas/numpy
+rootfsSizeMB = 4096                            # space for large packages
+
+[overrides.python.network]
+hostAccess = true
+
+[[overrides.python.ports]]
+host = 8888          # Jupyter notebook
+guest = 8888
 ```
 
 **Full-stack monorepo:**
 
-```yaml
-# .siloconf
-passEnv:
-  - AWS_PROFILE
-  - GITHUB_TOKEN
+```toml
+# silo.toml
+passEnv = ["AWS_PROFILE", "GITHUB_TOKEN"]
 
-overrides:
-  node:
-    image: docker.io/library/node:20-slim  # LTS for production
-    network:
-      hostAccess: true
-    ports:
-      - host: 3000
-        guest: 3000
-  python:
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-  go:
-    network:
-      hostAccess: true
+[overrides.node]
+image = "docker.io/library/node:20-slim"  # LTS for production
+
+[overrides.node.network]
+hostAccess = true
+
+[[overrides.node.ports]]
+host = 3000
+guest = 3000
+
+[overrides.python]
+env = { PYTHONDONTWRITEBYTECODE = "1" }
+
+[overrides.go.network]
+hostAccess = true
 ```
 
 ## Installing project dependencies with `silo setup`
@@ -423,23 +406,20 @@ Each `silo run` creates a fresh ephemeral VM — any packages installed during t
 ```bash
 cd ~/projects/my-web-app
 
-# 1. Create a .siloconf to configure networking and port forwarding
-cat > .siloconf << 'EOF'
-mount:
-  exclude:
-    - node_modules
+# 1. Create a silo.toml to configure networking and port forwarding
+cat > silo.toml << 'EOF'
+[mount]
+exclude = ["node_modules"]
 
-overrides:
-  node:
-    network:
-      hostAccess: true
-      proxy:
-        allow:
-          - registry.npmjs.org
-          - "*.github.com"
-    ports:
-      - host: 5173
-        guest: 5173
+[overrides.node.network]
+hostAccess = true
+
+[overrides.node.network.proxy]
+allow = ["registry.npmjs.org", "*.github.com"]
+
+[[overrides.node.ports]]
+host = 5173
+guest = 5173
 EOF
 
 # 2. Install dependencies and persist them
@@ -449,7 +429,7 @@ silo build node npm install
 npm run dev
 ```
 
-Without the `.siloconf`, the VM has no network access (so `npm install` can't reach the registry) and no port forwarding (so the dev server isn't accessible from the host).
+Without the `silo.toml`, the VM has no network access (so `npm install` can't reach the registry) and no port forwarding (so the dev server isn't accessible from the host).
 
 ### Example: Python project
 
@@ -457,18 +437,16 @@ Without the `.siloconf`, the VM has no network access (so `npm install` can't re
 cd ~/projects/my-api
 
 # 1. Configure network access for pip and port forwarding for the server
-cat > .siloconf << 'EOF'
-overrides:
-  python:
-    network:
-      hostAccess: true
-      proxy:
-        allow:
-          - pypi.org
-          - "*.pythonhosted.org"
-    ports:
-      - host: 8000
-        guest: 8000
+cat > silo.toml << 'EOF'
+[overrides.python.network]
+hostAccess = true
+
+[overrides.python.network.proxy]
+allow = ["pypi.org", "*.pythonhosted.org"]
+
+[[overrides.python.ports]]
+host = 8000
+guest = 8000
 EOF
 
 # 2. Install from requirements.txt and persist
@@ -478,11 +456,11 @@ silo build python pip install -r requirements.txt
 python manage.py runserver
 ```
 
-Or use `silo init` to auto-detect your project and generate a `.siloconf` interactively.
+Or use `silo init` to auto-detect your project and generate a `silo.toml` interactively.
 
 ### Project-local vs global
 
-By default, `silo build` saves the image to `.silo/<tool>/rootfs.ext4` in the project directory (requires a `.siloconf` in the project root). Use `--global` for packages you want everywhere:
+By default, `silo build` saves the image to `.silo/<tool>/rootfs.ext4` in the project directory (requires a `silo.toml` in the project root). Use `--global` for packages you want everywhere:
 
 ```bash
 # Project-local (default) — only this project gets these deps
@@ -624,18 +602,19 @@ A compressed entry is decompressed back to raw on the next cache hit (≈1–3s 
 
 ### Configure the policy
 
-Put a `cache:` block in `.siloconf` or `~/.silo/siloconf`:
+Put a `[cache]` block in `silo.toml` or `~/.silo/silo.toml`:
 
-```yaml
-cache:
-  rootfs:
-    maxSizeMB: 8192        # LRU eviction above this cap
-    maxAgeDays: 60         # entries untouched beyond this are evicted
-  tools:
-    maxSizeMB: 4096        # per-mount cap for pip/npm/cargo
-    maxAgeDays: 30         # file-level eviction by atime inside each mount
-    perMount:
-      rust/cargo: 8192     # override for specific mounts
+```toml
+[cache.rootfs]
+maxSizeMB = 8192        # LRU eviction above this cap
+maxAgeDays = 60         # entries untouched beyond this are evicted
+
+[cache.tools]
+maxSizeMB = 4096        # per-mount cap for pip/npm/cargo
+maxAgeDays = 30         # file-level eviction by atime inside each mount
+
+[cache.tools.perMount]
+"rust/cargo" = 8192     # override for specific mounts
 ```
 
 ### Full cleanup
@@ -647,7 +626,7 @@ silo cache clean --rootfs         # nuke rootfs cache
 silo cache clean --containers     # nuke stale container state
 silo cache clean                  # wipe rootfs cache + container state
 
-# Project-scoped reclamation (walks up for .siloconf)
+# Project-scoped reclamation (walks up for silo.toml)
 silo clean                        # rootfs cache + per-tool caches + stale VMs for this project
 silo clean --rootfs-only
 silo clean --caches-only
@@ -670,8 +649,8 @@ Shim (~/.silo/bin/python)
          │  calls: silo run --shim python python script.py
          ▼
 silo run
-         │  1. Loads ~/.silo/config.yaml (tool definition)
-         │  2. Finds .siloconf (walks up from cwd)
+         │  1. Loads ~/.silo/config.toml (tool definition)
+         │  2. Finds silo.toml (walks up from cwd)
          │  3. Merges config (project overrides global)
          ▼
 Apple Container (ephemeral micro-VM)
@@ -679,7 +658,7 @@ Apple Container (ephemeral micro-VM)
   │  /workspace  ← project dir (rw)    │
   │  /root/.cache/pip  ← cache (rw)    │
   │                                     │
-  │  $GITHUB_TOKEN ← if .siloconf      │
+  │  $GITHUB_TOKEN ← if silo.toml      │
   │                   allows it         │
   │                                     │
   │  No access to: ~/.ssh, ~/.aws,      │
@@ -699,7 +678,7 @@ VM destroyed after exit (ephemeral mode)
 | `silo run <tool> [args...]` | Run a command in an ephemeral sandbox |
 | `silo shell <tool>` | Interactive shell inside a sandbox |
 | `silo list [--available]` | Show installed or all available tools |
-| `silo init` | Auto-detect project and generate `.siloconf` (experimental) |
+| `silo init` | Auto-detect project and generate `silo.toml` (experimental) |
 | `silo build <tool> <cmd>` | Customize a tool's VM and persist changes |
 | `silo rebuild [<tool>]` | Re-run stored setup scripts |
 | `silo shim <tool> <add\|remove\|list>` | Add, remove, or list shims for a tool |
@@ -711,8 +690,8 @@ VM destroyed after exit (ephemeral mode)
 | `silo cache gc` | LRU + age-based eviction (also `--images`, `--tool-caches`) |
 | `silo cache compress` | Compress cold rootfs entries with zstd (~4× smaller) |
 | `silo cache clean` | Hard cleanup of rootfs cache / containers / orphans |
-| `silo clean` | Project-scoped reclamation (respects `.siloconf`) |
-| `silo pull` | Reconcile the environment to `.siloconf` |
+| `silo clean` | Project-scoped reclamation (respects `silo.toml`) |
+| `silo pull` | Reconcile the environment to `silo.toml` |
 | `silo reset` | Remove all silo data |
 
 ## First-run bootstrap

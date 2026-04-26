@@ -32,7 +32,7 @@ Registry entries may declare `postInstall:` — a list of shell commands run rig
 - `silo use node` — pin the default version of a tool
 - `silo use --global python@3.12` — same, but write to `~/.silo/silo.toml`
 - `silo unuse python` — remove the pin from `silo.toml`
-- Inside a project with `silo.toml` (or legacy `.siloconf`), all shims (`node`, `npm`, etc.) automatically use the project-pinned version
+- Inside a project with `silo.toml`, all shims (`node`, `npm`, etc.) automatically use the project-pinned version
 - Outside the project — global version is used
 
 ### Listing
@@ -73,11 +73,11 @@ User registry override: `~/.silo/registry.yaml` extends/replaces built-in entrie
 
 ### Global Config (`~/.silo/config.toml`)
 
-Stores installed tools with image, shims, cache mounts, resource limits, env, network, ports, LSP config. Stored as TOML; legacy `~/.silo/config.yaml` from earlier silo versions stays readable through 0.5 and is removed in 0.6.
+Stores installed tools with image, shims, cache mounts, resource limits, env, network, ports, LSP config. Stored as TOML.
 
 ### Project Config (`silo.toml`)
 
-Found by walking up from current directory. Merged with global silo.toml (`~/.silo/silo.toml`). Legacy `.siloconf` (YAML) is still read during the 0.5 deprecation window — run `silo config migrate` to convert it.
+Found by walking up from current directory. Merged with global silo.toml (`~/.silo/silo.toml`).
 
 - `pass_env` — forward host env vars into sandbox (e.g., `GITHUB_TOKEN`)
 - `pass_files` — mount host files read-only (e.g., `.npmrc`)
@@ -105,7 +105,7 @@ Merge order: tool defaults -> global silo.toml -> project silo.toml
 
 ### Config CLI
 
-Modify `silo.toml` from the command line (creates the file if it doesn't exist; or edits an existing legacy `.siloconf` in place during the deprecation window):
+Modify `silo.toml` from the command line (creates the file if it doesn't exist):
 
 - `silo config ports add <tool> <host:guest>` — add port forwarding
 - `silo config ports remove <tool> <host:guest>` — remove port forwarding
@@ -113,9 +113,8 @@ Modify `silo.toml` from the command line (creates the file if it doesn't exist; 
 - `silo config network deny <tool> <domain>` — deny a domain
 - `silo config network remove <tool> <domain>` — remove a domain from allow/deny
 - `silo config show` — display merged project config
-- `silo config migrate` — convert legacy `.siloconf` to `silo.toml` (preserves the original as `.siloconf.bak`)
 
-The old flat `config add-port` / `config remove-port` forms remain as hidden aliases and will be removed in 0.6.0. YAML config files (`.siloconf`, `~/.silo/siloconf`, `~/.silo/config.yaml`) are deprecated in 0.5 and removed in 0.6 — silo prints a one-shot stderr warning when it loads any of them.
+The old flat `config add-port` / `config remove-port` forms remain as hidden aliases and will be removed in 0.6.0.
 
 ## Performance
 
