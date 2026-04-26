@@ -32,8 +32,8 @@ All business logic, independently testable:
 
 | Package | Purpose |
 |---------|---------|
-| `config/global.go` | `~/.silo/config.yaml` — installed tools |
-| `config/project.go` | `.siloconf` walk-up + global siloconf merge |
+| `config/global.go` | `~/.silo/config.toml` — installed tools |
+| `config/project.go` | `silo.toml` walk-up + global silo.toml merge |
 | `config/tool.go` | Tool spec: image, shims, cache, network, LSP |
 | `config/cache_policy.go` | Configurable rootfs + tools cache policy |
 | `cache/rootfs.go` | APFS clonefile-based rootfs cache |
@@ -88,7 +88,7 @@ Swift library wrapping Apple's Containerization framework:
 silo run python -c "print('hello')"
 
 1. Load GlobalConfig → find python tool definition
-2. Find project .siloconf (walk-up) + merge global siloconf
+2. Find project silo.toml (walk-up) + merge global silo.toml
 3. engine.RunEphemeral
    a. bridge.Manager.ImageGet(reference, pull=false)
    b. Check rootfs cache for digest match
@@ -112,9 +112,9 @@ Cache populated during `silo install` (eager) or first `silo run` (lazy fallback
 ```
 Tool defaults (from registry.yaml)
   ↓ overridden by
-Global siloconf (~/.silo/siloconf)
+Global silo.toml (~/.silo/silo.toml)
   ↓ overridden by
-Project .siloconf (walk-up from cwd)
+Project silo.toml (walk-up from cwd)
   ↓ merged into
 Final ToolDefinition used for execution
 ```
@@ -153,8 +153,8 @@ Per-tool configuration:
 
 ```
 ~/.silo/
-  config.yaml          # Installed tools
-  siloconf             # Global .siloconf
+  config.toml          # Installed tools
+  silo.toml            # Global silo.toml
   vmlinux              # Linux kernel (Kata Containers)
   initfs.ext4          # vminitd init filesystem
   bin/                 # Shim scripts
