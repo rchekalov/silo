@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/klauspost/compress v1.18.5
+	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/cobra v1.10.1
 	golang.org/x/sys v0.43.0

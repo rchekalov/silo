@@ -28,11 +28,11 @@ Registry entries may declare `postInstall:` — a list of shell commands run rig
 
 ### Project Version Pinning (pyenv/asdf-style)
 
-- `silo use python@3.12` — record a project pin in `.siloconf` (writes `tools:` + `overrides:` as needed). Does **not** install — run `silo sync` after.
+- `silo use python@3.12` — record a project pin in `silo.toml` (writes `tools` + `[overrides]` as needed). Does **not** install — run `silo sync` after.
 - `silo use node` — pin the default version of a tool
-- `silo use --global python@3.12` — same, but write to `~/.silo/siloconf`
-- `silo unuse python` — remove the pin from `.siloconf`
-- Inside a project with `.siloconf`, all shims (`node`, `npm`, etc.) automatically use the project-pinned version
+- `silo use --global python@3.12` — same, but write to `~/.silo/silo.toml`
+- `silo unuse python` — remove the pin from `silo.toml`
+- Inside a project with `silo.toml` (or legacy `.siloconf`), all shims (`node`, `npm`, etc.) automatically use the project-pinned version
 - Outside the project — global version is used
 
 ### Listing
@@ -71,13 +71,13 @@ User registry override: `~/.silo/registry.yaml` extends/replaces built-in entrie
 
 ## Configuration
 
-### Global Config (`~/.silo/config.yaml`)
+### Global Config (`~/.silo/config.toml`)
 
-Stores installed tools with image, shims, cache mounts, resource limits, env, network, ports, LSP config.
+Stores installed tools with image, shims, cache mounts, resource limits, env, network, ports, LSP config. Stored as TOML; legacy `~/.silo/config.yaml` from earlier silo versions stays readable through 0.5 and is removed in 0.6.
 
-### Project Config (`.siloconf`)
+### Project Config (`silo.toml`)
 
-Found by walking up from current directory. Merged with global siloconf (`~/.silo/siloconf`).
+Found by walking up from current directory. Merged with global silo.toml (`~/.silo/silo.toml`). Legacy `.siloconf` (YAML) is still read during the 0.5 deprecation window — run `silo config migrate` to convert it.
 
 - `pass_env` — forward host env vars into sandbox (e.g., `GITHUB_TOKEN`)
 - `pass_files` — mount host files read-only (e.g., `.npmrc`)
@@ -97,24 +97,25 @@ Found by walking up from current directory. Merged with global siloconf (`~/.sil
 
 Not overridable (registry/engine concerns): `shims`, `requires`, `buildRootfs`, `buildScript`, `buildScope`, `buildProjectRoot`.
 
-Merge order: tool defaults -> global siloconf -> project .siloconf
+Merge order: tool defaults -> global silo.toml -> project silo.toml
 
 ### Init
 
-- `silo init` — generate a `.siloconf` in current directory
+- `silo init` — generate a `silo.toml` in current directory
 
 ### Config CLI
 
-Modify `.siloconf` from the command line (creates the file if it doesn't exist):
+Modify `silo.toml` from the command line (creates the file if it doesn't exist; or edits an existing legacy `.siloconf` in place during the deprecation window):
 
 - `silo config ports add <tool> <host:guest>` — add port forwarding
 - `silo config ports remove <tool> <host:guest>` — remove port forwarding
 - `silo config network allow <tool> <domain>` — allow a domain for network proxy
 - `silo config network deny <tool> <domain>` — deny a domain
 - `silo config network remove <tool> <domain>` — remove a domain from allow/deny
-- `silo config show` — display merged project config as YAML
+- `silo config show` — display merged project config
+- `silo config migrate` — convert legacy `.siloconf` to `silo.toml` (preserves the original as `.siloconf.bak`)
 
-The old flat `config add-port` / `config remove-port` forms remain as hidden aliases and will be removed in 0.6.0.
+The old flat `config add-port` / `config remove-port` forms remain as hidden aliases and will be removed in 0.6.0. YAML config files (`.siloconf`, `~/.silo/siloconf`, `~/.silo/config.yaml`) are deprecated in 0.5 and removed in 0.6 — silo prints a one-shot stderr warning when it loads any of them.
 
 ## Performance
 
@@ -144,16 +145,14 @@ Tool caches (pip, npm, cargo, go mod, deno) are mounted from host, persisted acr
 
 ## Port Forwarding
 
-- `ports` in `.siloconf` overrides or tool config — maps host ports to guest ports
+- `ports` in `silo.toml` overrides or tool config — maps host ports to guest ports
 - Ports automatically enable networking (no separate `hostAccess` needed)
 - Application-layer TCP relay, started after container boot
-- Example `.siloconf`:
-  ```yaml
-  overrides:
-    python:
-      ports:
-        - host: 8080
-          guest: 8080
+- Example `silo.toml`:
+  ```toml
+  [[overrides.python.ports]]
+  host = 8080
+  guest = 8080
   ```
 
 ## Project-Scoped Builds
@@ -173,7 +172,7 @@ Lookup order: project rootfs -> global build rootfs -> rootfs cache -> OCI unpac
 
 ## Project Reconciliation
 
-- `silo sync` — install any tools declared in `.siloconf` that aren't installed yet, and pull/warm their rootfs cache. Safe to re-run.
+- `silo sync` — install any tools declared in `silo.toml` that aren't installed yet, and pull/warm their rootfs cache. Safe to re-run.
   - `--dry-run` — print the plan without acting
   - `--force` — re-pull even if the rootfs cache is warm
 - `silo pull` / `silo apply` — deprecated aliases of `silo sync` (removed in 0.6.0).
@@ -184,7 +183,7 @@ Previously bundled into `silo status`; now split into three focused commands:
 
 - `silo doctor` — runtime readiness (kernel, initfs, bootstrap state)
 - `silo current` — installed tools plus any active project overrides
-- `silo current <tool>` — effective tool definition after `.siloconf` overrides
+- `silo current <tool>` — effective tool definition after `silo.toml` overrides
 - `silo cache report` — disk usage by bucket (rootfs cache, per-tool caches, images, builds)
 
 `silo status` remains as a deprecated alias that prints `doctor` + `current` output.

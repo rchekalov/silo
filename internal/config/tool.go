@@ -20,20 +20,20 @@ const (
 // ProxyConfig is a domain allow/deny list for the network proxy. `allow`
 // supports leading wildcards ("*.github.com").
 type ProxyConfig struct {
-	Allow []string `yaml:"allow"`
-	Deny  []string `yaml:"deny,omitempty"`
+	Allow []string `yaml:"allow"           toml:"allow"`
+	Deny  []string `yaml:"deny,omitempty"  toml:"deny,omitempty"`
 }
 
-// NetworkConfig gates host access for a tool. Camel-case in YAML.
+// NetworkConfig gates host access for a tool. Camel-case in both YAML and TOML.
 type NetworkConfig struct {
-	HostAccess bool         `yaml:"hostAccess"`
-	Proxy      *ProxyConfig `yaml:"proxy,omitempty"`
+	HostAccess bool         `yaml:"hostAccess"      toml:"hostAccess"`
+	Proxy      *ProxyConfig `yaml:"proxy,omitempty" toml:"proxy,omitempty"`
 }
 
 // PortMapping forwards a host TCP port to a guest VM port.
 type PortMapping struct {
-	Host  uint16 `yaml:"host"`
-	Guest uint16 `yaml:"guest"`
+	Host  uint16 `yaml:"host"  toml:"host"`
+	Guest uint16 `yaml:"guest" toml:"guest"`
 }
 
 // ShimMapping pairs a host shim filename with the command run inside the container.
@@ -71,6 +71,17 @@ func (s *ShimMapping) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// MarshalText / UnmarshalText make ShimMapping serialize as a TOML string
+// scalar — same shape as YAML — via the encoding.TextMarshaler hook that
+// pelletier/go-toml/v2 honors for value types.
+func (s ShimMapping) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
+// UnmarshalText parses "host[:container]" into a ShimMapping.
+func (s *ShimMapping) UnmarshalText(b []byte) error {
+	*s = ParseShim(string(b))
+	return nil
+}
+
 // CacheMount is a persistent host<->guest path binding. Sized hints are purely
 // informational (shown in `silo list`).
 //
@@ -79,68 +90,68 @@ func (s *ShimMapping) UnmarshalYAML(node *yaml.Node) error {
 // regenerable cache — the age-based pass would silently delete those files
 // after MaxAge, forcing the user to re-authenticate with no obvious cause.
 type CacheMount struct {
-	Guest    string `yaml:"guest"`
-	Host     string `yaml:"host"`
-	SizeHint string `yaml:"sizeHint,omitempty"`
-	NoGC     bool   `yaml:"noGC,omitempty"`
+	Guest    string `yaml:"guest"              toml:"guest"`
+	Host     string `yaml:"host"               toml:"host"`
+	SizeHint string `yaml:"sizeHint,omitempty" toml:"sizeHint,omitempty"`
+	NoGC     bool   `yaml:"noGC,omitempty"     toml:"noGC,omitempty"`
 }
 
 // LspConfig describes an optional language-server installation/run recipe.
 type LspConfig struct {
-	Command []string          `yaml:"command"`
-	Install string            `yaml:"install,omitempty"`
-	Cache   []CacheMount      `yaml:"cache,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty"`
+	Command []string          `yaml:"command"            toml:"command"`
+	Install string            `yaml:"install,omitempty"  toml:"install,omitempty"`
+	Cache   []CacheMount      `yaml:"cache,omitempty"    toml:"cache,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"      toml:"env,omitempty"`
 }
 
 // ToolDefinition captures everything we need to create a VM and run a tool.
 type ToolDefinition struct {
-	Image string `yaml:"image"`
+	Image string `yaml:"image" toml:"image"`
 	// PinnedGlobally is true when the user explicitly ran `silo install <tool>`,
 	// claiming ownership of this command everywhere on PATH. False when the
 	// tool was incidentally installed by `silo sync` because some project's
 	// .siloconf listed it — in that case silo only handles the command inside
 	// projects that claim it, and shim invocations elsewhere fall through to
 	// the next instance on PATH (pyenv-style).
-	PinnedGlobally bool              `yaml:"pinnedGlobally,omitempty"`
-	Shims          []ShimMapping     `yaml:"shims,omitempty"`
-	Cache          []CacheMount      `yaml:"cache,omitempty"`
-	Workdir        string            `yaml:"workdir,omitempty"`
-	Env            map[string]string `yaml:"env,omitempty"`
+	PinnedGlobally bool              `yaml:"pinnedGlobally,omitempty" toml:"pinnedGlobally,omitempty"`
+	Shims          []ShimMapping     `yaml:"shims,omitempty"          toml:"shims,omitempty"`
+	Cache          []CacheMount      `yaml:"cache,omitempty"          toml:"cache,omitempty"`
+	Workdir        string            `yaml:"workdir,omitempty"        toml:"workdir,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty"            toml:"env,omitempty"`
 	// PassEnv lists host env var names copied into the guest when set. Used by
 	// registry entries to declare the credential env their tool expects (e.g.
 	// claude-code → ANTHROPIC_API_KEY) so the tool works out of the box without
 	// the user wiring passEnv in every project's .siloconf. Merged with the
 	// project-level passEnv at runtime.
-	PassEnv []string `yaml:"passEnv,omitempty"`
+	PassEnv []string `yaml:"passEnv,omitempty" toml:"passEnv,omitempty"`
 	// PassSshAgent forwards $SSH_AUTH_SOCK from the host into the guest at
 	// /run/silo/ssh-agent.sock. Host private keys never enter the VM — the
 	// guest only sees the agent protocol. Use this instead of `passFiles:
 	// [.ssh/id_ed25519]`, which copies the actual key material into the
 	// guest filesystem and defeats silo's isolation guarantee.
-	PassSshAgent bool           `yaml:"passSshAgent,omitempty"`
-	CPUs         int32          `yaml:"cpus,omitempty"`
-	MemoryMB     uint64         `yaml:"memoryMB,omitempty"`
-	RootfsSizeMB uint64         `yaml:"rootfsSizeMB,omitempty"`
-	Network      *NetworkConfig `yaml:"network,omitempty"`
-	Requires     []string       `yaml:"requires,omitempty"`
-	Ports        []PortMapping  `yaml:"ports,omitempty"`
-	BuildRootfs  string         `yaml:"buildRootfs,omitempty"`
-	BuildScript  string         `yaml:"buildScript,omitempty"`
+	PassSshAgent bool           `yaml:"passSshAgent,omitempty" toml:"passSshAgent,omitempty"`
+	CPUs         int32          `yaml:"cpus,omitempty"         toml:"cpus,omitempty"`
+	MemoryMB     uint64         `yaml:"memoryMB,omitempty"     toml:"memoryMB,omitempty"`
+	RootfsSizeMB uint64         `yaml:"rootfsSizeMB,omitempty" toml:"rootfsSizeMB,omitempty"`
+	Network      *NetworkConfig `yaml:"network,omitempty"      toml:"network,omitempty"`
+	Requires     []string       `yaml:"requires,omitempty"     toml:"requires,omitempty"`
+	Ports        []PortMapping  `yaml:"ports,omitempty"        toml:"ports,omitempty"`
+	BuildRootfs  string         `yaml:"buildRootfs,omitempty"  toml:"buildRootfs,omitempty"`
+	BuildScript  string         `yaml:"buildScript,omitempty"  toml:"buildScript,omitempty"`
 	// PostInstall is a list of shell commands baked into a persistent rootfs
 	// right after the image is pulled. The final rootfs becomes BuildRootfs
 	// (global scope) so subsequent `silo run` invocations reuse it without
 	// refetching anything from the registry. The build step uses HostAccess
 	// networking without the proxy allowlist, so apt-get / npm install / etc.
 	// work regardless of the runtime's tighter allowlist.
-	PostInstall []string `yaml:"postInstall,omitempty"`
+	PostInstall []string `yaml:"postInstall,omitempty" toml:"postInstall,omitempty"`
 	// BuildScope records how BuildRootfs/BuildScript were produced so that
 	// `silo rebuild` picks the right target without guessing from the
 	// filesystem. Values: "global" (shared ~/.silo/builds/<tool>), "project"
 	// (pinned to BuildProjectRoot), or "" (legacy entries predating this field).
-	BuildScope       string     `yaml:"buildScope,omitempty"`
-	BuildProjectRoot string     `yaml:"buildProjectRoot,omitempty"`
-	LSP              *LspConfig `yaml:"lsp,omitempty"`
+	BuildScope       string     `yaml:"buildScope,omitempty"       toml:"buildScope,omitempty"`
+	BuildProjectRoot string     `yaml:"buildProjectRoot,omitempty" toml:"buildProjectRoot,omitempty"`
+	LSP              *LspConfig `yaml:"lsp,omitempty"              toml:"lsp,omitempty"`
 }
 
 // ApplyDefaults fills any zero-valued fields with the defaults.

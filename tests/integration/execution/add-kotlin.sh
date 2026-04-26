@@ -22,19 +22,24 @@ plugins {
 }
 EOF
 
-echo "Testing: silo add kotlin records postInstall in .siloconf"
+echo "Testing: silo add kotlin records postInstall in silo.toml (or legacy .siloconf)"
 "$SILO_BIN" add kotlin --no-sync >/dev/null 2>&1
 
-if [ ! -f .siloconf ]; then
-  echo "FAIL: .siloconf was not created"
+CFG_FILE=""
+if [ -f silo.toml ]; then
+  CFG_FILE=silo.toml
+elif [ -f .siloconf ]; then
+  CFG_FILE=.siloconf
+else
+  echo "FAIL: neither silo.toml nor .siloconf was created"
   exit 1
 fi
-if ! grep -q "postInstall" .siloconf; then
-  echo "FAIL: .siloconf missing postInstall entry"
-  cat .siloconf
+if ! grep -q "postInstall" "$CFG_FILE"; then
+  echo "FAIL: $CFG_FILE missing postInstall entry"
+  cat "$CFG_FILE"
   exit 1
 fi
-echo "PASS: .siloconf updated"
+echo "PASS: $CFG_FILE updated"
 
 echo "Testing: silo sync runs without error"
 "$SILO_BIN" sync >/dev/null 2>&1

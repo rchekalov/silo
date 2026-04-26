@@ -21,6 +21,7 @@ func Root() string {
 }
 
 func Config() string     { return filepath.Join(Root(), "config.yaml") }
+func ConfigTOML() string { return filepath.Join(Root(), "config.toml") }
 func ImageState() string { return filepath.Join(Root(), "state.json") }
 func ShimBin() string    { return filepath.Join(Root(), "bin") }
 func Kernel() string     { return filepath.Join(Root(), "vmlinux") }
@@ -38,6 +39,11 @@ func Logs() string           { return filepath.Join(Root(), "logs") }
 func RootfsCache() string    { return filepath.Join(Root(), "rootfs-cache") }
 func Builds() string         { return filepath.Join(Root(), "builds") }
 func GlobalSiloconf() string { return filepath.Join(Root(), "siloconf") }
+
+// GlobalSiloTOML is ~/.silo/silo.toml — the new TOML-formatted equivalent
+// of the legacy `siloconf`. Loaders prefer it; the YAML path stays
+// readable for backward compatibility through 0.5 and is removed in 0.6.
+func GlobalSiloTOML() string { return filepath.Join(Root(), "silo.toml") }
 func LocalDownloads() string { return filepath.Join(Root(), ".local") }
 func UserRegistry() string   { return filepath.Join(Root(), "registry.yaml") }
 

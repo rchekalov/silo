@@ -64,14 +64,14 @@ func TestInstallerSetsPinnedGlobally(t *testing.T) {
 		t.Fatal("PinnedGlobally must persist across save/load")
 	}
 
-	// Sanity-check the YAML literally has the field — guards against an
+	// Sanity-check the TOML file literally has the field — guards against an
 	// omitempty mishap that would silently drop the flag on save.
-	raw, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".silo", "config.yaml"))
+	raw, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".silo", "config.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "pinnedGlobally: true") {
-		t.Fatalf("config.yaml missing pinnedGlobally:true; got:\n%s", raw)
+	if !strings.Contains(string(raw), "pinnedGlobally = true") {
+		t.Fatalf("config.toml missing pinnedGlobally=true; got:\n%s", raw)
 	}
 }
 
@@ -97,13 +97,13 @@ func TestSyncPathLeavesPinnedGloballyFalse(t *testing.T) {
 	if loaded.Tools["from-sync"].PinnedGlobally {
 		t.Fatal("sync-style InstallTool with PinnedGlobally=false must not become pinned on load")
 	}
-	// Field must be omitted from YAML when false (omitempty), so the file
-	// stays clean for sync-installed tools.
-	raw, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".silo", "config.yaml"))
+	// Field must be omitted from the file when false (omitempty), so the
+	// file stays clean for sync-installed tools.
+	raw, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".silo", "config.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(raw), "pinnedGlobally") {
-		t.Fatalf("YAML should omit pinnedGlobally when false; got:\n%s", raw)
+		t.Fatalf("TOML should omit pinnedGlobally when false; got:\n%s", raw)
 	}
 }

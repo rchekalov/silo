@@ -8,19 +8,26 @@ import (
 	"path/filepath"
 	"sort"
 
+	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/rchekalov/silo/internal/runtime"
 )
 
-// ProjectConfigFilename is the per-project config file name that's walked up
-// from the current working directory.
+// ProjectConfigFilename is the legacy YAML per-project config file name.
+// New configs use ProjectConfigFilenameTOML; the walk-up still reads YAML
+// for one release cycle and emits a deprecation warning. Removed in 0.6.
 const ProjectConfigFilename = ".siloconf"
+
+// ProjectConfigFilenameTOML is the canonical TOML per-project config file.
+// `silo init` and `silo config migrate` write this. Walk-up prefers it over
+// .siloconf when both are present.
+const ProjectConfigFilenameTOML = "silo.toml"
 
 // MountConfig configures the /workspace mount.
 type MountConfig struct {
-	Mode    string   `yaml:"mode,omitempty"`
-	Exclude []string `yaml:"exclude,omitempty"`
+	Mode    string   `yaml:"mode,omitempty"    toml:"mode,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty" toml:"exclude,omitempty"`
 }
 
 // ToolOverride captures per-project tweaks to a tool definition.
@@ -34,37 +41,37 @@ type MountConfig struct {
 // Cache lets a project add persistent host<->guest mounts on top of the
 // registry's. Deduplication is by Guest path (override wins on conflict).
 type ToolOverride struct {
-	Image       string            `yaml:"image,omitempty"`
-	Env         map[string]string `yaml:"env,omitempty"`
-	Network     *NetworkConfig    `yaml:"network,omitempty"`
-	Ports       []PortMapping     `yaml:"ports,omitempty"`
-	PostInstall []string          `yaml:"postInstall,omitempty"`
-	Cache       []CacheMount      `yaml:"cache,omitempty"`
+	Image       string            `yaml:"image,omitempty"       toml:"image,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"         toml:"env,omitempty"`
+	Network     *NetworkConfig    `yaml:"network,omitempty"     toml:"network,omitempty"`
+	Ports       []PortMapping     `yaml:"ports,omitempty"       toml:"ports,omitempty"`
+	PostInstall []string          `yaml:"postInstall,omitempty" toml:"postInstall,omitempty"`
+	Cache       []CacheMount      `yaml:"cache,omitempty"       toml:"cache,omitempty"`
 	// CPUs / MemoryMB / RootfsSizeMB override the registry/global resource
 	// defaults on a per-project basis. Zero means "no override" — the base
 	// ToolDefinition's value wins. Tag spelling matches ToolDefinition so
 	// `silo config show` round-trips and global vs project keys stay aligned.
-	CPUs         int32  `yaml:"cpus,omitempty"`
-	MemoryMB     uint64 `yaml:"memoryMB,omitempty"`
-	RootfsSizeMB uint64 `yaml:"rootfsSizeMB,omitempty"`
+	CPUs         int32  `yaml:"cpus,omitempty"         toml:"cpus,omitempty"`
+	MemoryMB     uint64 `yaml:"memoryMB,omitempty"     toml:"memoryMB,omitempty"`
+	RootfsSizeMB uint64 `yaml:"rootfsSizeMB,omitempty" toml:"rootfsSizeMB,omitempty"`
 	// Workdir overrides the guest working directory (e.g. monorepos that mount
 	// the project at /app instead of /workspace). Empty string means "no override".
-	Workdir string `yaml:"workdir,omitempty"`
+	Workdir string `yaml:"workdir,omitempty" toml:"workdir,omitempty"`
 	// PassEnv adds host env var names that should be copied into the guest for
 	// this tool only. Use it for credentials scoped to one tool (e.g. only
 	// `claude-code` should see ANTHROPIC_API_KEY). Merged with the base
 	// ToolDefinition.PassEnv and the project-level PassEnv.
-	PassEnv []string `yaml:"passEnv,omitempty"`
+	PassEnv []string `yaml:"passEnv,omitempty" toml:"passEnv,omitempty"`
 	// PassSshAgent enables SSH agent forwarding for this tool only. ORed with
 	// the project-level PassSshAgent and the registry's ToolDefinition.PassSshAgent
 	// — any source true means forwarding is on. Cannot force-off here; if you
 	// want forwarding everywhere except one tool, leave the project-level off
 	// and opt in per-tool.
-	PassSshAgent bool `yaml:"passSshAgent,omitempty"`
+	PassSshAgent bool `yaml:"passSshAgent,omitempty" toml:"passSshAgent,omitempty"`
 	// LSP overrides bits of the registry's LspConfig: pin a language-server
 	// install command, add LSP-only cache mounts, tweak LSP env. Non-empty
 	// fields win over the base; nil sub-fields leave the base intact.
-	LSP *LspConfig `yaml:"lsp,omitempty"`
+	LSP *LspConfig `yaml:"lsp,omitempty" toml:"lsp,omitempty"`
 }
 
 // ProjectConfig is .siloconf at the project root (or ~/.silo/siloconf, globally).
@@ -72,24 +79,24 @@ type ProjectConfig struct {
 	// Tools lists the tools this project depends on. Keys in Overrides also count;
 	// see ProjectTools. Declaring a tool here lets the user pin it without a
 	// customization block, which is the common case.
-	Tools     []string `yaml:"tools,omitempty"`
-	PassEnv   []string `yaml:"passEnv,omitempty"`
-	PassFiles []string `yaml:"passFiles,omitempty"`
+	Tools     []string `yaml:"tools,omitempty"     toml:"tools,omitempty"`
+	PassEnv   []string `yaml:"passEnv,omitempty"   toml:"passEnv,omitempty"`
+	PassFiles []string `yaml:"passFiles,omitempty" toml:"passFiles,omitempty"`
 	// PassSshAgent enables SSH agent forwarding for every tool in this project.
 	// Mounts the host's $SSH_AUTH_SOCK into the guest so `git clone git@...` and
 	// `ssh-add -l` work without copying private keys. Per-tool ToolOverride.PassSshAgent
 	// is ORed on top — any source true means forwarding is on for that tool.
-	PassSshAgent bool                    `yaml:"passSshAgent,omitempty"`
-	Mount        *MountConfig            `yaml:"mount,omitempty"`
-	Overrides    map[string]ToolOverride `yaml:"overrides,omitempty"`
-	Cache        *CacheConfig            `yaml:"cache,omitempty"`
+	PassSshAgent bool                    `yaml:"passSshAgent,omitempty" toml:"passSshAgent,omitempty"`
+	Mount        *MountConfig            `yaml:"mount,omitempty"        toml:"mount,omitempty"`
+	Overrides    map[string]ToolOverride `yaml:"overrides,omitempty"    toml:"overrides,omitempty"`
+	Cache        *CacheConfig            `yaml:"cache,omitempty"        toml:"cache,omitempty"`
 	// ProjectID is an optional stable identifier (e.g. UUID/ULID) for this
 	// project. Without it, silo keys per-machine state under a hash of the
 	// project's current absolute path, which means renaming or moving the
 	// project directory orphans that state (smart-adoption recovers most
 	// cases by matching .siloconf content). Set this once and silo's state
 	// survives `mv` unconditionally. Mirrors compose.yaml's `name:` field.
-	ProjectID string `yaml:"project_id,omitempty"`
+	ProjectID string `yaml:"project_id,omitempty" toml:"project_id,omitempty"`
 }
 
 // Claims reports whether this project config claims `tool` — listed under
@@ -136,7 +143,9 @@ func (c *ProjectConfig) ProjectTools() []string {
 	return out
 }
 
-// LoadProjectConfigFile parses a .siloconf file at path. Returns (nil, nil) if absent.
+// LoadProjectConfigFile parses a project config file at path. Returns
+// (nil, nil) if absent. Format is sniffed by extension — silo.toml uses
+// TOML; .siloconf and any other extension use YAML for backward compat.
 func LoadProjectConfigFile(path string) (*ProjectConfig, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -146,18 +155,33 @@ func LoadProjectConfigFile(path string) (*ProjectConfig, error) {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var c ProjectConfig
+	if filepath.Ext(path) == ".toml" || filepath.Base(path) == ProjectConfigFilenameTOML {
+		if err := toml.Unmarshal(raw, &c); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
+		}
+		return &c, nil
+	}
 	if err := yaml.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil
 }
 
-// LoadGlobalSiloconf reads ~/.silo/siloconf, if it exists.
+// LoadGlobalSiloconf reads ~/.silo/silo.toml (preferred) or the legacy
+// ~/.silo/siloconf YAML, whichever exists. Returns (nil, nil) if neither
+// is present.
 func LoadGlobalSiloconf() (*ProjectConfig, error) {
+	if cfg, err := LoadProjectConfigFile(runtime.GlobalSiloTOML()); err != nil {
+		return nil, err
+	} else if cfg != nil {
+		return cfg, nil
+	}
 	return LoadProjectConfigFile(runtime.GlobalSiloconf())
 }
 
-// FindProjectConfig walks up from `start` (default cwd) looking for .siloconf.
+// FindProjectConfig walks up from `start` (default cwd) looking for a project
+// config. silo.toml wins over .siloconf when both are present at the same
+// level — to migrate, run `silo config migrate` and remove the legacy file.
 // Returns (config, root) or (nil, ""). Errors propagate.
 func FindProjectConfig(start string) (*ProjectConfig, string, error) {
 	if start == "" {
@@ -172,13 +196,19 @@ func FindProjectConfig(start string) (*ProjectConfig, string, error) {
 		return nil, "", err
 	}
 	for {
-		candidate := filepath.Join(current, ProjectConfigFilename)
-		cfg, err := LoadProjectConfigFile(candidate)
-		if err != nil {
-			return nil, "", err
-		}
-		if cfg != nil {
-			return cfg, current, nil
+		// Prefer silo.toml (new) over .siloconf (legacy) at each level.
+		for _, name := range [...]string{ProjectConfigFilenameTOML, ProjectConfigFilename} {
+			candidate := filepath.Join(current, name)
+			cfg, err := LoadProjectConfigFile(candidate)
+			if err != nil {
+				return nil, "", err
+			}
+			if cfg != nil {
+				if name == ProjectConfigFilename {
+					maybeWarnYAMLDeprecation(candidate)
+				}
+				return cfg, current, nil
+			}
 		}
 		parent := filepath.Dir(current)
 		if parent == current {
@@ -186,6 +216,26 @@ func FindProjectConfig(start string) (*ProjectConfig, string, error) {
 		}
 		current = parent
 	}
+}
+
+// yamlWarnedFor avoids spamming the deprecation warning when multiple silo
+// commands run in rapid succession (e.g. tab-completion + run). Stored as a
+// package-level set keyed by absolute path; reset only on process restart.
+var yamlWarnedFor = map[string]struct{}{}
+
+// maybeWarnYAMLDeprecation prints a one-shot stderr warning the first time we
+// load a .siloconf YAML file in this process. Removed when YAML support
+// drops in 0.6 — the loader will hard-error then.
+func maybeWarnYAMLDeprecation(path string) {
+	if _, ok := yamlWarnedFor[path]; ok {
+		return
+	}
+	yamlWarnedFor[path] = struct{}{}
+	fmt.Fprintf(os.Stderr,
+		"silo: %s uses the legacy YAML format (deprecated; removed in 0.6).\n"+
+			"      Run `silo config migrate` to convert it to silo.toml.\n",
+		path,
+	)
 }
 
 // FindMergedProjectConfig walks up for .siloconf and merges it over
@@ -230,8 +280,36 @@ func FindOrDefault() (*ProjectConfig, string, error) {
 	return &ProjectConfig{}, cwd, nil
 }
 
-// Save writes the YAML to <directory>/.siloconf.
+// Save writes the project config under `directory`. If a legacy
+// `.siloconf` already exists at that location and `silo.toml` does not,
+// Save preserves the YAML file (in-place edits keep the user's format).
+// Otherwise it writes silo.toml — the new default. Use SaveTOML / SaveYAML
+// explicitly when the format must be forced (e.g. `silo config migrate`).
 func (c *ProjectConfig) Save(directory string) error {
+	tomlPath := filepath.Join(directory, ProjectConfigFilenameTOML)
+	yamlPath := filepath.Join(directory, ProjectConfigFilename)
+	if _, err := os.Stat(tomlPath); err == nil {
+		return c.SaveTOML(directory)
+	}
+	if _, err := os.Stat(yamlPath); err == nil {
+		return c.SaveYAML(directory)
+	}
+	// Neither file exists — fresh write goes to silo.toml.
+	return c.SaveTOML(directory)
+}
+
+// SaveTOML writes the config as silo.toml under `directory`.
+func (c *ProjectConfig) SaveTOML(directory string) error {
+	out, err := toml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(directory, ProjectConfigFilenameTOML), out, 0o644)
+}
+
+// SaveYAML writes the config as legacy .siloconf YAML under `directory`.
+// Used by the migration path's pre-migration round-trip and tests.
+func (c *ProjectConfig) SaveYAML(directory string) error {
 	out, err := yaml.Marshal(c)
 	if err != nil {
 		return err

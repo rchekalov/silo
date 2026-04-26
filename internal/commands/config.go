@@ -5,6 +5,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -192,9 +193,63 @@ func loadOrInitProjectConfig() (*config.ProjectConfig, string, error) {
 	return cfg, root, nil
 }
 
+var configMigrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Convert .siloconf (YAML, deprecated) to silo.toml",
+	Long: `Reads .siloconf walked up from cwd, writes silo.toml in the same directory,
+and renames the original to .siloconf.bak. Idempotent — silently no-op if
+silo.toml already exists at that root. YAML support is removed in 0.6.`,
+	Args: cobra.NoArgs,
+	RunE: runConfigMigrate,
+}
+
+func runConfigMigrate(_ *cobra.Command, _ []string) error {
+	cfg, root, err := config.FindProjectConfig("")
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return fmt.Errorf("no .siloconf or silo.toml found walking up from %s", mustGetwd())
+	}
+	yamlPath := filepath.Join(root, config.ProjectConfigFilename)
+	tomlPath := filepath.Join(root, config.ProjectConfigFilenameTOML)
+	if _, err := os.Stat(tomlPath); err == nil {
+		fmt.Fprintf(os.Stderr, "silo: %s already exists; nothing to do.\n", tomlPath)
+		return nil
+	}
+	if _, err := os.Stat(yamlPath); err != nil {
+		return fmt.Errorf("no legacy %s to migrate at %s", config.ProjectConfigFilename, root)
+	}
+	if err := cfg.SaveTOML(root); err != nil {
+		return fmt.Errorf("write %s: %w", tomlPath, err)
+	}
+	bakPath := yamlPath + ".bak"
+	if err := os.Rename(yamlPath, bakPath); err != nil {
+		// Don't fail the migration if rename can't proceed — the new TOML
+		// file is already written and authoritative; the user can delete
+		// the old YAML by hand.
+		fmt.Fprintf(os.Stderr,
+			"silo: wrote %s but could not rename %s to %s: %v\n"+
+				"      Remove the legacy file manually before running silo again.\n",
+			tomlPath, yamlPath, bakPath, err)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "silo: migrated %s → %s (legacy file preserved as %s)\n",
+		yamlPath, tomlPath, bakPath)
+	return nil
+}
+
+func mustGetwd() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return cwd
+}
+
 func init() {
 	configNetworkCmd.AddCommand(configNetworkAllowCmd, configNetworkDenyCmd, configNetworkRemoveCmd)
 	configPortsCmd.AddCommand(configPortsAddCmd, configPortsRemoveCmd)
-	configCmd.AddCommand(configPortsCmd, configNetworkCmd, configShowCmd, configAddPortCmd, configRemovePortCmd)
+	configCmd.AddCommand(configPortsCmd, configNetworkCmd, configShowCmd, configMigrateCmd, configAddPortCmd, configRemovePortCmd)
 	addCommand(configCmd)
 }

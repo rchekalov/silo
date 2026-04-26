@@ -21,7 +21,7 @@ func withFakeHome(t *testing.T) string {
 	return home
 }
 
-// seedConfig writes a v2 ~/.silo/config.yaml with one tool at the requested
+// seedConfig writes a v2 ~/.silo/config.toml with one tool at the requested
 // pin state. Returns the absolute config path.
 func seedConfig(t *testing.T, home, tool string, pinned bool) string {
 	t.Helper()
@@ -40,8 +40,8 @@ func seedConfig(t *testing.T, home, tool string, pinned bool) string {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	// runtime.Config() = $HOME/.silo/config.yaml when HOME is overridden.
-	return filepath.Join(dir, "config.yaml")
+	// NewGlobalConfig targets config.toml; LoadGlobalConfig prefers it.
+	return filepath.Join(dir, "config.toml")
 }
 
 func loadPinState(t *testing.T, tool string) bool {
@@ -137,10 +137,10 @@ func TestSetPinErrorsWhenToolNotInstalled(t *testing.T) {
 }
 
 func TestSetPinPersistsOnDisk(t *testing.T) {
-	// Beyond loading via the config package, sanity-check that the YAML
-	// file on disk actually contains the pinnedGlobally field after a
-	// flip. Guards against a regression where Save serializes from a
-	// stale in-memory copy.
+	// Beyond loading via the config package, sanity-check that the on-disk
+	// TOML file actually contains the pinnedGlobally field after a flip.
+	// Guards against a regression where Save serializes from a stale
+	// in-memory copy.
 	home := withFakeHome(t)
 	path := seedConfig(t, home, "ruby", false)
 
@@ -160,7 +160,7 @@ func TestSetPinPersistsOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "pinnedGlobally: true") {
-		t.Fatalf("YAML missing pinnedGlobally:true after pin; got:\n%s", raw)
+	if !strings.Contains(string(raw), "pinnedGlobally = true") {
+		t.Fatalf("TOML missing pinnedGlobally=true after pin; got:\n%s", raw)
 	}
 }

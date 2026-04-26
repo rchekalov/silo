@@ -18,21 +18,27 @@ import "time"
 //	      python/pip: 512
 //	      rust/cargo: 2048
 type CacheConfig struct {
-	Rootfs *CachePolicy     `yaml:"rootfs,omitempty"`
-	Tools  *ToolCachePolicy `yaml:"tools,omitempty"`
+	Rootfs *CachePolicy     `yaml:"rootfs,omitempty" toml:"rootfs,omitempty"`
+	Tools  *ToolCachePolicy `yaml:"tools,omitempty"  toml:"tools,omitempty"`
 }
 
 // CachePolicy is a size+age eviction policy.
 type CachePolicy struct {
-	MaxSizeMB  uint64 `yaml:"maxSizeMB,omitempty"`
-	MaxAgeDays uint64 `yaml:"maxAgeDays,omitempty"`
+	MaxSizeMB  uint64 `yaml:"maxSizeMB,omitempty"  toml:"maxSizeMB,omitempty"`
+	MaxAgeDays uint64 `yaml:"maxAgeDays,omitempty" toml:"maxAgeDays,omitempty"`
 }
 
 // ToolCachePolicy applies to per-tool package caches, with optional per-mount
 // overrides keyed on "tool/subdir" (e.g. "python/pip", "rust/cargo").
+//
+// go-toml/v2 has no equivalent of yaml's `,inline`, so the embedded
+// CachePolicy fields appear nested under [tools] in TOML (i.e.
+// [tools.maxSizeMB] is wrong; users write maxSizeMB = 4096 inline at the
+// top of [tools]). The struct embedding still works at the Go level because
+// go-toml/v2 promotes embedded struct fields by default.
 type ToolCachePolicy struct {
 	CachePolicy `yaml:",inline"`
-	PerMount    map[string]uint64 `yaml:"perMount,omitempty"` // "<tool>/<subdir>": maxSizeMB
+	PerMount    map[string]uint64 `yaml:"perMount,omitempty" toml:"perMount,omitempty"` // "<tool>/<subdir>": maxSizeMB
 }
 
 // EffectiveRootfsPolicy returns the rootfs cache policy with defaults applied.

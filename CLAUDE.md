@@ -51,23 +51,24 @@ silo run --ssh-agent node npm i                 # forward $SSH_AUTH_SOCK so priv
                                                 # host keys never enter the guest — only the agent protocol relays
 silo run node npm run dev                       # sibling shim auto-promote: execs `npm run dev`, not `node npm run dev`
                                                 # cross-tool shims (e.g. `silo run node python foo.py`) emit a stderr hint instead
-silo config ports add node 3000:3000 # add port forwarding to .siloconf
+silo config ports add node 3000:3000 # add port forwarding to silo.toml
 silo config network allow node '*.npmjs.org'  # allow a domain
 silo config show                      # show merged project config
+silo config migrate                  # convert legacy .siloconf (YAML) → silo.toml (removed in 0.6)
 
-# Project-local pinning (asdf/pyenv style — edits .siloconf; does not install)
+# Project-local pinning (asdf/pyenv style — edits silo.toml; does not install)
 silo use python@3.12                 # pin this project to python 3.12
 silo use node                        # pin default version of node for this project
-silo use --global python@3.12        # pin in ~/.silo/siloconf instead
-silo unuse python                    # unpin from .siloconf
+silo use --global python@3.12        # pin in ~/.silo/silo.toml instead
+silo unuse python                    # unpin from silo.toml
 
 # Global ownership (pin/unpin) — controls shim fall-through outside projects
-silo pin node                        # silo always handles node's shims, even outside .siloconf-claimed dirs
+silo pin node                        # silo always handles node's shims, even outside silo.toml-claimed dirs
 silo unpin node                      # node shim falls through to next-on-PATH outside projects that claim it
                                      # `silo install <tool>` sets pinned=true; `silo sync` sets pinned=false
 
 # Project lifecycle (per-project reconcile + disk reclamation)
-silo sync                             # reconcile env to .siloconf (install missing tools, warm rootfs cache)
+silo sync                             # reconcile env to silo.toml (install missing tools, warm rootfs cache)
                                       # `silo pull` / `silo apply` remain as deprecated aliases (removed in 0.6.0)
 silo clean                            # free rootfs cache + per-tool caches + stale VMs for this project
 silo clean --rootfs-only              # narrow to rootfs cache only
@@ -85,13 +86,13 @@ silo build node --remove                # delete the stored rootfs
 silo add kotlin                         # JDK 17 + Kotlin into claude-code (project-scoped bake)
 silo add ripgrep jq                     # arbitrary apt packages
 silo add --for node --step 'npm install -g typescript'   # raw shell step
-silo add kotlin --no-sync               # record in .siloconf only; run `silo sync` later
-silo add kotlin --global                # write to ~/.silo/siloconf instead
+silo add kotlin --no-sync               # record in silo.toml only; run `silo sync` later
+silo add kotlin --global                # write to ~/.silo/silo.toml instead
 
 # Diagnostics (was `status` — now split)
 silo doctor                           # runtime readiness: kernel, initfs
 silo current                          # installed tools + active project overrides
-silo current python                   # effective tool definition (merged with .siloconf overrides)
+silo current python                   # effective tool definition (merged with silo.toml overrides)
 
 # Shell integration
 silo shellenv                         # print the shell init for ~/.silo/bin; `eval "$(silo shellenv)"`
@@ -113,18 +114,19 @@ silo cache clean --safe               # remove them (prompts; --force to skip)
 silo cache clean                      # nuke all rootfs cache + container state (original behavior)
 ```
 
-Cache policy (configurable in `.siloconf` or `~/.silo/siloconf`; defaults apply if absent):
+Cache policy (configurable in `silo.toml` or `~/.silo/silo.toml`; defaults apply if absent):
 
-```yaml
-cache:
-  rootfs:
-    maxSizeMB: 8192        # LRU eviction above this cap
-    maxAgeDays: 60         # entries untouched beyond this are evicted
-  tools:
-    maxSizeMB: 4096        # per-tool package cache cap (per mount)
-    maxAgeDays: 30         # file-level eviction by atime inside each mount
-    perMount:
-      rust/cargo: 8192     # override for specific mounts
+```toml
+[cache.rootfs]
+maxSizeMB = 8192            # LRU eviction above this cap
+maxAgeDays = 60             # entries untouched beyond this are evicted
+
+[cache.tools]
+maxSizeMB = 4096            # per-tool package cache cap (per mount)
+maxAgeDays = 30             # file-level eviction by atime inside each mount
+
+[cache.tools.perMount]
+"rust/cargo" = 8192         # override for specific mounts
 ```
 
 Auto-GC runs once per process at the top of `silo run` — users passively reclaim disk just by using silo. `silo uninstall <tool>` also frees the rootfs cache entry and (if not shared) deletes the OCI image + orphan blobs.
@@ -353,8 +355,8 @@ Without caching, every invocation unpacks OCI layers to ext4 (~25s). With cachin
 
 ```
 ~/.silo/
-  config.yaml          # Installed tools (GlobalConfig)
-  siloconf             # Global .siloconf (fallback for all projects)
+  config.toml          # Installed tools (GlobalConfig). Legacy config.yaml still readable in 0.5.
+  silo.toml            # Global config (fallback for all projects). Legacy `siloconf` (YAML) still readable in 0.5.
   vmlinux              # Linux kernel
   initfs.ext4          # vminitd init filesystem
   bin/                 # Shim scripts (must be on PATH)
@@ -393,73 +395,81 @@ both are present.
 
 ## Configuration
 
-### Global (~/.silo/config.yaml)
+### Global (~/.silo/config.toml)
 
-```yaml
-version: 1
-tools:
-  python:
-    image: docker.io/library/python:3.12-slim
-    shims:
-      - python
-      - python3
-      - pip
-      - pip3
-    cache:
-      - guest: /root/.cache/pip
-        host: ~/.silo/cache/python/pip
-    workdir: /workspace
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-    cpus: 2
-    memory_mb: 2048
-    rootfs_size_mb: 2048
+Stored as TOML. Legacy `~/.silo/config.yaml` from earlier silo versions stays
+readable through 0.5 and is removed in 0.6 — `silo config migrate` rewrites
+project files; the global file migrates in place automatically when silo
+sees a `config.yaml` and no `config.toml`.
+
+```toml
+version = 1
+
+[tools.python]
+image = "docker.io/library/python:3.12-slim"
+shims = ["python", "python3", "pip", "pip3"]
+workdir = "/workspace"
+cpus = 2
+memoryMB = 2048
+rootfsSizeMB = 2048
+
+[tools.python.env]
+PYTHONDONTWRITEBYTECODE = "1"
+
+[[tools.python.cache]]
+guest = "/root/.cache/pip"
+host = "~/.silo/cache/python/pip"
 ```
 
-### Project (.siloconf)
+### Project (silo.toml)
 
-Searched by walking up from cwd. Merged with global siloconf (`~/.silo/siloconf`) — project overrides global.
+Searched by walking up from cwd. Merged with the global silo.toml
+(`~/.silo/silo.toml`) — project overrides global. The legacy `.siloconf`
+YAML is still read during the 0.5 deprecation window; run
+`silo config migrate` to convert it.
 
-```yaml
-tools: [python, node]      # declares the project's required tools (silo sync uses this)
-pass_env: [GITHUB_TOKEN]
-pass_files: [.npmrc]
-passSshAgent: true         # forward $SSH_AUTH_SOCK into every tool in this project
-                           # (host private keys never leave the host; only the agent protocol relays).
-                           # Use this — NOT `passFiles: [.ssh/id_ed25519]`, which copies the
-                           # actual key material into the guest and breaks silo's isolation guarantee.
-                           # Per-tool override under overrides.<tool>.passSshAgent ORs on top.
-overrides:
-  python:
-    env:
-      PYTHONPATH: /workspace/src
-  node:
-    # Per-project resource bumps — a Vue/Vite build needs ≥ 6 GB of guest RAM.
-    # Zero / unset means "use the registry/global value"; non-zero wins.
-    cpus: 4
-    memoryMB: 6144
-    rootfsSizeMB: 4096
-    # workdir: /app           # uncomment if your project mounts /app instead of /workspace
-  python:
-    # Per-tool LSP override — pin a language-server version, add an LSP-only cache,
-    # tweak LSP env. Nil sub-fields keep the base; non-empty sub-fields win.
-    lsp:
-      install: npm i -g pyright@1.1.350
-      env:
-        PYRIGHT_LOG: verbose
-  claude-code:
-    # Per-tool passEnv — only this tool sees ANTHROPIC_API_KEY, instead of every
-    # tool inheriting it via the top-level passEnv at the file root.
-    passEnv: [ANTHROPIC_API_KEY]
-    # Project-specific bake steps — appended to the registry's postInstall.
-    # `silo sync` produces ~/.silo/baked/<recipe-hash>/rootfs.ext4
-    # (content-addressed; multiple projects with the same recipe share it).
-    postInstall:
-      - apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless kotlin && rm -rf /var/lib/apt/lists/*
-    # Cache mounts added on top of the registry's; dedup is by guest path.
-    cache:
-      - guest: /root/.gradle
-        host: ~/.silo/cache/claude-code/gradle
+```toml
+tools = ["python", "node"]      # declares the project's required tools (silo sync uses this)
+passEnv = ["GITHUB_TOKEN"]
+passFiles = [".npmrc"]
+passSshAgent = true             # forward $SSH_AUTH_SOCK into every tool in this project.
+                                # Host private keys never leave the host; only the agent
+                                # protocol relays. Use this — NOT
+                                # passFiles = [".ssh/id_ed25519"], which copies key
+                                # material into the guest and breaks isolation.
+                                # Per-tool override under overrides.<tool>.passSshAgent ORs on top.
+
+[overrides.python]
+env = { PYTHONPATH = "/workspace/src" }
+# Per-tool LSP override — pin a language-server version, add LSP-only cache mounts,
+# tweak LSP env. Nil sub-fields keep the base; non-empty sub-fields win.
+[overrides.python.lsp]
+install = "npm i -g pyright@1.1.350"
+env = { PYRIGHT_LOG = "verbose" }
+
+[overrides.node]
+# Per-project resource bumps — a Vue/Vite build needs ≥ 6 GB of guest RAM.
+# Zero / unset means "use the registry/global value"; non-zero wins.
+cpus = 4
+memoryMB = 6144
+rootfsSizeMB = 4096
+# workdir = "/app"            # uncomment if your project mounts /app instead of /workspace
+
+[overrides.claude-code]
+# Per-tool passEnv — only this tool sees ANTHROPIC_API_KEY, instead of every
+# tool inheriting it via the top-level passEnv at the file root.
+passEnv = ["ANTHROPIC_API_KEY"]
+# Project-specific bake steps — appended to the registry's postInstall.
+# `silo sync` produces ~/.silo/baked/<recipe-hash>/rootfs.ext4
+# (content-addressed; multiple projects with the same recipe share it).
+postInstall = [
+  "apt-get update && apt-get install -y --no-install-recommends openjdk-17-jdk-headless kotlin && rm -rf /var/lib/apt/lists/*",
+]
+
+# Cache mounts added on top of the registry's; dedup is by guest path.
+[[overrides.claude-code.cache]]
+guest = "/root/.gradle"
+host = "~/.silo/cache/claude-code/gradle"
 ```
 
 The project's tool set is the union of `tools:` and the keys of `overrides:`. `silo sync` uses this set to decide what to install/pull; `silo clean` uses it to decide what artifacts to reclaim.
@@ -482,64 +492,70 @@ Not overridable in `.siloconf` (registry / engine concerns): `shims`, `requires`
 
 **Node — Vite/Vue/Next dev server that needs ≥ 6 GB RAM and host-only npm registry.**
 
-```yaml
-tools: [node]
-overrides:
-  node:
-    image: docker.io/library/node:20-bookworm
-    cpus: 4
-    memoryMB: 6144
-    rootfsSizeMB: 4096
-    env:
-      NODE_OPTIONS: "--max-old-space-size=5120"
-    network:
-      hostAccess: true
-      proxy:
-        allow:
-          - registry.npmjs.org
-          - "*.npmjs.org"
-    ports:
-      - host: 5173       # Vite default
-        guest: 5173
-      - host: 3000       # Next/Nuxt default
-        guest: 3000
+```toml
+tools = ["node"]
+
+[overrides.node]
+image = "docker.io/library/node:20-bookworm"
+cpus = 4
+memoryMB = 6144
+rootfsSizeMB = 4096
+env = { NODE_OPTIONS = "--max-old-space-size=5120" }
+
+[overrides.node.network]
+hostAccess = true
+
+[overrides.node.network.proxy]
+allow = ["registry.npmjs.org", "*.npmjs.org"]
+
+[[overrides.node.ports]]
+host = 5173       # Vite default
+guest = 5173
+
+[[overrides.node.ports]]
+host = 3000       # Next/Nuxt default
+guest = 3000
 ```
 
-Without `memoryMB: 6144` the global default of 2048 MB is still cramped for a real Vite/Vue build — visible as Node's `Ineffective mark-compacts near heap limit` failure.
+Without `memoryMB = 6144` the global default of 2048 MB is still cramped for a real Vite/Vue build — visible as Node's `Ineffective mark-compacts near heap limit` failure.
 
 **Python — pin 3.11, install pyright via LSP, scope `ANTHROPIC_API_KEY` to one tool.**
 
-```yaml
-tools: [python]
-passEnv: [GITHUB_TOKEN]              # forwarded to every tool
-passFiles: [.pypirc]
-overrides:
-  python:
-    image: docker.io/library/python:3.11-slim
-    workdir: /app                    # monorepo mounts source at /app
-    env:
-      PYTHONPATH: /app/src
-    network:
-      hostAccess: true
-      proxy:
-        allow: [pypi.org, "*.pythonhosted.org"]
-    ports:
-      - host: 8000
-        guest: 8000
-    lsp:
-      install: npm i -g pyright@1.1.350
-      env:
-        PYRIGHT_LOG: verbose
-  claude-code:
-    passEnv: [ANTHROPIC_API_KEY]     # scoped: only claude-code sees this
-    memoryMB: 4096
+```toml
+tools = ["python"]
+passEnv = ["GITHUB_TOKEN"]              # forwarded to every tool
+passFiles = [".pypirc"]
+
+[overrides.python]
+image = "docker.io/library/python:3.11-slim"
+workdir = "/app"                        # monorepo mounts source at /app
+env = { PYTHONPATH = "/app/src" }
+
+[overrides.python.network]
+hostAccess = true
+[overrides.python.network.proxy]
+allow = ["pypi.org", "*.pythonhosted.org"]
+
+[[overrides.python.ports]]
+host = 8000
+guest = 8000
+
+[overrides.python.lsp]
+install = "npm i -g pyright@1.1.350"
+env = { PYRIGHT_LOG = "verbose" }
+
+[overrides.claude-code]
+passEnv = ["ANTHROPIC_API_KEY"]         # scoped: only claude-code sees this
+memoryMB = 4096
 ```
 
 `silo lsp python` now boots with the pinned pyright version; `silo run claude-code` is the only tool that sees `ANTHROPIC_API_KEY` (other tools never have it in their env).
 
-### Global siloconf (~/.silo/siloconf)
+### Global silo.toml (~/.silo/silo.toml)
 
-Same format as project `.siloconf`. Applied as fallback when no project-level config exists, or merged under project config.
+Same format as the per-project `silo.toml`. Applied as fallback when no project-level
+config exists, or merged under it. Legacy `~/.silo/siloconf` (YAML) is still read in
+0.5 and removed in 0.6.
 
 ### ToolDefinition fields
 

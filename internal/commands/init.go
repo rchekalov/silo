@@ -22,15 +22,19 @@ var (
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Create .siloconf in the current directory",
+	Short: "Create silo.toml in the current directory",
 	RunE: func(_ *cobra.Command, _ []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(cwd, config.ProjectConfigFilename)
-		if _, err := os.Stat(target); err == nil {
-			return fmt.Errorf("%s already exists", target)
+		// Either form already in place blocks init — running again would
+		// silently overwrite. Migration belongs to `silo config migrate`.
+		for _, name := range []string{config.ProjectConfigFilenameTOML, config.ProjectConfigFilename} {
+			target := filepath.Join(cwd, name)
+			if _, err := os.Stat(target); err == nil {
+				return fmt.Errorf("%s already exists", target)
+			}
 		}
 
 		// Pick the set of tools: explicit --tool flag wins, else auto-detect.
@@ -64,12 +68,12 @@ var initCmd = &cobra.Command{
 		// installed host tool (claude-code) via overrides.<tool>.postInstall.
 		addonNotes := maybeAddLanguageAddons(c, cwd, initNoInteractive)
 
-		if err := c.Save(cwd); err != nil {
+		if err := c.SaveTOML(cwd); err != nil {
 			return err
 		}
 		_ = appendToGitignore(filepath.Join(cwd, ".gitignore"), ".silo/")
 
-		fmt.Printf("Created .siloconf in %s\n", cwd)
+		fmt.Printf("Created %s in %s\n", config.ProjectConfigFilenameTOML, cwd)
 		if len(selected) > 0 {
 			fmt.Printf("Detected tools: %s\n", strings.Join(selected, ", "))
 		}
