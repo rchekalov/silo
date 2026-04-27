@@ -73,6 +73,8 @@ run_test "legacy-dashdash" "$SCRIPT_DIR/execution/legacy-dashdash.sh" "python"
 run_test "add-kotlin" "$SCRIPT_DIR/execution/add-kotlin.sh" "claude-code"
 run_test "build-persistence" "$SCRIPT_DIR/execution/build-persistence.sh" "python"
 run_test "venv-host-mount" "$SCRIPT_DIR/execution/venv-host-mount.sh" "python"
+run_test "demo-node-quickstart" "$SCRIPT_DIR/execution/demo-node-quickstart.sh" "node"
+run_test "demo-python-quickstart" "$SCRIPT_DIR/execution/demo-python-quickstart.sh" "python"
 
 echo ""
 echo "--- Cache ---"
