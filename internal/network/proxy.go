@@ -183,29 +183,53 @@ func (p *HTTPProxy) handleHTTP(inbound net.Conn, reader *bufio.Reader, firstLine
 }
 
 // IsAllowed returns true if `domain` is permitted by the proxy rule.
-// An explicit match in Allow wins; "*" in Deny denies everything else;
-// otherwise (non-catch-all deny list) the default is allow.
+//
+// Default is deny: an empty Allow list means no host is reachable. A literal
+// "*" entry in Allow is the explicit catch-all that opts the tool into open
+// internet — use this when a tool genuinely needs unbounded egress (psql to
+// arbitrary DB hosts, aws-cli to arbitrary regions). Specific allow patterns
+// support leading wildcards ("*.github.com").
+//
+// Precedence: specific match > catch-all > default. Order:
+//  1. Specific Allow match (non-"*")     → allow.
+//  2. Specific Deny match (non-"*")      → deny.
+//  3. Catch-all Deny ("*")               → deny.
+//  4. Catch-all Allow ("*")              → allow.
+//  5. Default                            → deny.
+//
+// This lets a project punch a hole in allow:["*"] via a specific Deny entry,
+// and lets the legacy "Allow:[pypi.org] Deny:[*]" idiom keep working
+// (specific allow beats catch-all deny).
 func (p *HTTPProxy) IsAllowed(domain string) bool {
 	d := strings.ToLower(domain)
+
 	for _, pattern := range p.rule.Allow {
+		if pattern == "*" {
+			continue
+		}
 		if MatchDomain(d, strings.ToLower(pattern)) {
 			return true
 		}
 	}
 	for _, pattern := range p.rule.Deny {
 		if pattern == "*" {
-			return false
+			continue
 		}
 		if MatchDomain(d, strings.ToLower(pattern)) {
 			return false
 		}
 	}
-	// If an allowlist exists but didn't match and there's no catch-all deny,
-	// treat the allowlist as exhaustive: deny.
-	if len(p.rule.Allow) > 0 {
-		return false
+	for _, pattern := range p.rule.Deny {
+		if pattern == "*" {
+			return false
+		}
 	}
-	return true
+	for _, pattern := range p.rule.Allow {
+		if pattern == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // MatchDomain supports leading wildcard patterns: "*.github.com" matches

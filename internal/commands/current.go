@@ -44,6 +44,7 @@ func runCurrent(_ *cobra.Command, args []string) error {
 		if !ok {
 			return errs.ToolNotInstalledError(name)
 		}
+		def = overlayRegistryNetwork(name, def)
 		if merged != nil {
 			if o, ok := merged.Overrides[name]; ok {
 				def = config.ApplyOverride(def, o)
