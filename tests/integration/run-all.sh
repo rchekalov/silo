@@ -86,6 +86,7 @@ echo "--- Network ---"
 run_test "network-isolation" "$SCRIPT_DIR/network/network-isolation.sh" "python"
 run_test "host-access" "$SCRIPT_DIR/network/host-access.sh" "python"
 run_test "proxy-allowlist" "$SCRIPT_DIR/network/proxy-allowlist.sh" "python"
+run_test "network-default-deny" "$SCRIPT_DIR/network/network-default-deny.sh" "python"
 
 echo ""
 echo "--- LSP ---"

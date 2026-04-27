@@ -250,6 +250,7 @@ func cloneNetwork(n *config.NetworkConfig) *config.NetworkConfig {
 		p := *n.Proxy
 		p.Allow = append([]string(nil), n.Proxy.Allow...)
 		p.Deny = append([]string(nil), n.Proxy.Deny...)
+		p.InstallAllow = append([]string(nil), n.Proxy.InstallAllow...)
 		out.Proxy = &p
 	}
 	return &out

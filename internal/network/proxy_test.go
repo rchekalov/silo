@@ -49,14 +49,47 @@ func TestIsAllowedWithAllowlist(t *testing.T) {
 	}
 }
 
-func TestIsAllowedWithDenylist(t *testing.T) {
+func TestIsAllowedDefaultDeny(t *testing.T) {
+	// Empty rule denies everything: this is the deny-by-default contract.
+	p := &HTTPProxy{rule: config.ProxyConfig{}}
+	if p.IsAllowed("pypi.org") {
+		t.Fatal("empty rule must deny pypi.org")
+	}
+	if p.IsAllowed("anything.example") {
+		t.Fatal("empty rule must deny everything")
+	}
+}
+
+func TestIsAllowedStarCatchAll(t *testing.T) {
+	// allow:["*"] is the explicit opt-in to open internet.
+	p := &HTTPProxy{rule: config.ProxyConfig{Allow: []string{"*"}}}
+	if !p.IsAllowed("anything.example") {
+		t.Fatal("allow:[*] must permit any host")
+	}
+	if !p.IsAllowed("pypi.org") {
+		t.Fatal("allow:[*] must permit pypi.org")
+	}
+}
+
+func TestIsAllowedStarWithDenyHole(t *testing.T) {
+	// Deny takes precedence over catch-all so projects can punch holes.
+	p := &HTTPProxy{rule: config.ProxyConfig{Allow: []string{"*"}, Deny: []string{"evil.com"}}}
+	if p.IsAllowed("evil.com") {
+		t.Fatal("deny must override allow:*")
+	}
+	if !p.IsAllowed("pypi.org") {
+		t.Fatal("non-denied still allowed by *")
+	}
+}
+
+func TestIsAllowedWithDenylistOnly(t *testing.T) {
+	// Deny without Allow still denies everything (deny-by-default).
 	p := &HTTPProxy{rule: config.ProxyConfig{Deny: []string{"evil.com"}}}
-	// No allowlist → default allow except for deny matches.
 	if p.IsAllowed("evil.com") {
 		t.Fatal("evil.com denied")
 	}
-	if !p.IsAllowed("pypi.org") {
-		t.Fatal("others allowed by default")
+	if p.IsAllowed("pypi.org") {
+		t.Fatal("no allow ⇒ everything denied; deny list alone does not unlock the rest")
 	}
 }
 

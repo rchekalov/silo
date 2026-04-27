@@ -23,6 +23,19 @@ tools:
     workdir: /workspace
     env:
       PYTHONDONTWRITEBYTECODE: "1"
+    network:
+      hostAccess: true
+      proxy:
+        # PyPI + the file CDN that wheels actually download from.
+        allow:
+          - pypi.org
+          - "*.pythonhosted.org"
+          - files.pythonhosted.org
+        # Debian-slim base: apt repos used by user `silo build python -- apt-get install ...`
+        # and any postInstall steps. Not reachable at runtime.
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
     lsp:
       command: ["pyright-langserver", "--stdio"]
       # `pyright[nodejs]` bundles a Node binary at pip-install time; plain
@@ -52,6 +65,15 @@ tools:
       - guest: /root/.npm
         host: ~/.silo/cache/node/npm
     workdir: /workspace
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - registry.npmjs.org
+          - "*.npmjs.org"
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
     lsp:
       command: ["typescript-language-server", "--stdio"]
       install: "npm install -g typescript-language-server typescript"
@@ -72,6 +94,18 @@ tools:
       - guest: /usr/local/cargo/registry
         host: ~/.silo/cache/rust/registry
     workdir: /workspace
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - crates.io
+          - static.crates.io
+          - index.crates.io
+          - "*.crates.io"
+          - static.rust-lang.org
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
     lsp:
       command: ["rust-analyzer"]
       install: "rustup component add rust-analyzer"
@@ -90,6 +124,16 @@ tools:
       - guest: /root/go/pkg/mod
         host: ~/.silo/cache/go/mod
     workdir: /workspace
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - proxy.golang.org
+          - sum.golang.org
+          - "*.golang.org"
+        # Alpine base image: apk repos used during postInstall.
+        installAllow:
+          - dl-cdn.alpinelinux.org
     lsp:
       command: ["gopls", "serve"]
       install: "go install golang.org/x/tools/gopls@latest"
@@ -111,6 +155,16 @@ tools:
       - guest: /root/.cache/deno
         host: ~/.silo/cache/deno/cache
     workdir: /workspace
+    network:
+      hostAccess: true
+      proxy:
+        allow:
+          - deno.land
+          - jsr.io
+          - "*.jsr.io"
+          - "*.deno.dev"
+        installAllow:
+          - dl-cdn.alpinelinux.org
 
   playwright:
     description: Playwright browser automation
@@ -127,6 +181,16 @@ tools:
     rootfsSizeMB: 4096
     network:
       hostAccess: true
+      proxy:
+        # npm to install @playwright/test + the browser CDN.
+        allow:
+          - registry.npmjs.org
+          - "*.npmjs.org"
+          - playwright.azureedge.net
+          - cdn.playwright.dev
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
     requires:
       - node
 
@@ -145,6 +209,15 @@ tools:
     rootfsSizeMB: 4096
     network:
       hostAccess: true
+      proxy:
+        allow:
+          - download.cypress.io
+          - cdn.cypress.io
+          - registry.npmjs.org
+          - "*.npmjs.org"
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
     requires:
       - node
 
@@ -165,6 +238,11 @@ tools:
     workdir: /workspace
     memoryMB: 256
     network:
+      # psql speaks raw TCP to whatever DB host the user passes — that path
+      # uses hostAccess directly, NOT the HTTP forward proxy. We deliberately
+      # leave proxy.allow empty so HTTP egress is denied by default; if a
+      # user wants psql to also do `curl https://...`, they add the host to
+      # silo.toml explicitly.
       hostAccess: true
 
   jupyter:
@@ -181,6 +259,9 @@ tools:
     memoryMB: 8192
     rootfsSizeMB: 4096
     network:
+      # Jupyter binds locally for the host port-forward to reach it; no
+      # default HTTP egress. Users that want notebook cells to `pip install`
+      # opt in via silo.toml (or extend python's allowlist via overrides).
       hostAccess: true
     requires:
       - python
@@ -199,6 +280,13 @@ tools:
     workdir: /workspace
     network:
       hostAccess: true
+      proxy:
+        # AWS service endpoints are unbounded across regions/services, so
+        # the registry allows the AWS DNS suffix at large rather than
+        # enumerating every endpoint. Users can override and tighten.
+        allow:
+          - "*.amazonaws.com"
+          - "*.aws.amazon.com"
 
   claude-code:
     description: Claude Code AI coding assistant (isolated)
@@ -244,4 +332,20 @@ tools:
     rootfsSizeMB: 4096
     network:
       hostAccess: true
+      proxy:
+        # Match the README's promised allowlist: model API + telemetry +
+        # package origins claude-code asks the user to install tools from.
+        # Everything else is denied by default.
+        allow:
+          - api.anthropic.com
+          - "*.statsig.com"
+          - github.com
+          - "*.github.com"
+          - registry.npmjs.org
+          - "*.npmjs.org"
+          - pypi.org
+          - "*.pythonhosted.org"
+        installAllow:
+          - deb.debian.org
+          - security.debian.org
 

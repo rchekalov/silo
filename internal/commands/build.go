@@ -95,6 +95,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if !ok {
 		return errs.ToolNotInstalledError(tool)
 	}
+	def = overlayRegistryNetwork(tool, def)
 
 	ws, err := config.ResolveWorkspace("")
 	if err != nil {
@@ -136,7 +137,7 @@ func runBuildAll(cfg *config.GlobalConfig) error {
 		return errs.Configf("no tools have a stored build script; run `silo build <tool> <cmd>` first")
 	}
 	for _, tool := range targets {
-		def := cfg.Tools[tool]
+		def := overlayRegistryNetwork(tool, cfg.Tools[tool])
 		target, isGlobal, err := resolveBuildTarget(tool, def, ws.ProjectRoot)
 		if err != nil {
 			return err

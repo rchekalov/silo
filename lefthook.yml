@@ -3,7 +3,11 @@ pre-commit:
   commands:
     lint:
       glob: "*.go"
-      run: ./bin/golangci-lint run --fix --fast-only {staged_files}
+      # Pass the whole module (./...) instead of {staged_files}: golangci-lint
+      # v2's typechecker rejects file lists that span multiple packages with
+      # "named files must all be in one directory", which fires on any
+      # cross-package commit. Full module lint is sub-second on this codebase.
+      run: ./bin/golangci-lint run --fix --fast-only ./...
       stage_fixed: true
       skip:
         - merge
