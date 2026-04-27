@@ -8,3 +8,28 @@ pre-commit:
       skip:
         - merge
         - rebase
+
+# Pre-push runs the two silo-web demo flows in a real VM. They're the
+# regression guards for the 0.5.2 build-rootfs corruption: if `silo build` +
+# `silo run` can no longer install + load chalk (node) and requests (python),
+# the basic quickstart is broken and no one should be pushing. CI doesn't
+# cover this — GitHub-hosted macos runners don't give Virtualization.framework
+# access, so test-vm only runs locally (here) and on self-hosted runners.
+#
+# Cost: ~3-5 min on a warm rootfs cache, ~10 min cold. Skip with
+# `git push --no-verify` if you really know better.
+pre-push:
+  parallel: false
+  commands:
+    demo-quickstarts:
+      run: |
+        set -euo pipefail
+        if [ ! -x bin/silo ]; then
+          echo "lefthook pre-push: bin/silo missing; running make sign-debug"
+          make sign-debug >/dev/null
+        fi
+        SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/demo-node-quickstart.sh
+        SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/demo-python-quickstart.sh
+      skip:
+        - merge
+        - rebase
