@@ -610,6 +610,21 @@ Use `--timing` on the run command:
 silo run --timing python --version
 ```
 
+### `pip` (or `node`, `npm`, …) resolves to `/opt/homebrew/bin` instead of silo
+Your shell is sourcing homebrew/conda/asdf shellenv *after* silo's, which
+re-prepends those bins ahead of `~/.silo/bin/`. `silo doctor` and
+`silo install` both flag this with a `Hint:` line. Move
+`eval "$(silo shellenv)"` to be the LAST entry in `~/.zshrc` / `~/.bashrc` so
+silo wins.
+
+### Python `venv` is auto-activated for `silo run python`
+When the project root has `./venv/bin/python` or `./.venv/bin/python`,
+`silo run python …` injects `VIRTUAL_ENV=/workspace/{venv,.venv}` and
+prepends the venv's `bin/` to `PATH` — equivalent to `source venv/bin/activate`.
+Without this, `silo run python venv/bin/pip install …` would invoke the
+rootfs python and silently install into `/usr/local/lib` (ephemeral, lost on
+container teardown). Scoped to the python tool only.
+
 ### Full reset
 ```bash
 rm -rf ~/.silo

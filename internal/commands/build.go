@@ -202,11 +202,19 @@ func runBuildOnce(
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Building %s via: %s %s\n", tool, command, strings.Join(arguments, " "))
+	// Wrap with `&& sync` so the guest flushes its page cache to the backing
+	// ext4 block device before sh -c exits. Without this, RunSetup snapshots
+	// the rootfs while writeback is still pending and tail-end writes (e.g.
+	// pip's site-packages directories) become 0-byte file inodes instead of
+	// real directories. Mirrors BakeTool in internal/tools/installer.go.
+	// def.BuildScript is recorded below in the original unwrapped form so
+	// `silo current` stays human-readable.
+	syncCommand, syncArguments := wrapWithSync(command, arguments)
 	exit, err := e.RunSetup(engine.RunSetupOptions{
 		ToolName:      tool,
 		Tool:          def,
-		Command:       command,
-		Arguments:     arguments,
+		Command:       syncCommand,
+		Arguments:     syncArguments,
 		ProjectDir:    projectDir,
 		ProjectRoot:   ws.ProjectRoot,
 		ProjectConfig: ws.Merged,
@@ -272,6 +280,23 @@ func resolveRebuildScope(tool string, def config.ToolDefinition, projectRoot str
 		}
 		return runtime.GlobalBuildRootfs(tool), true, nil
 	}
+}
+
+// wrapWithSync rewrites (command, arguments) so the resulting VM invocation
+// always ends with `; sync`. Two shapes:
+//   - --rerun feeds back ("sh", ["-c", <recorded script>]); we append " && sync"
+//     to the script directly so the inner sh keeps owning the full string.
+//   - first-run feeds back the user's argv (e.g. "pip", ["install", "-r", ...]);
+//     we space-join it into a sh -c command line. Acceptable because cobra's
+//     arg vector for a typical `silo build python pip install ...` doesn't
+//     contain shell metacharacters; users with complex commands can pass
+//     `sh -c '...'` themselves and hit the first branch.
+func wrapWithSync(command string, arguments []string) (string, []string) {
+	if command == "sh" && len(arguments) == 2 && arguments[0] == "-c" {
+		return "sh", []string{"-c", arguments[1] + " && sync"}
+	}
+	parts := append([]string{command}, arguments...)
+	return "sh", []string{"-c", strings.Join(parts, " ") + " && sync"}
 }
 
 func removeBuild(target string) error {

@@ -167,6 +167,8 @@ Tool caches (pip, npm, cargo, go mod, deno) are mounted from host, persisted acr
 
 The old `silo setup` / `silo rebuild` commands remain as deprecated aliases of `silo build` and will be removed in 0.6.0.
 
+The user's command is wrapped as `sh -c '<cmd> && sync'` before the build VM runs it. Without the trailing `sync`, the rootfs would be snapshotted while the guest's page cache still held tail-end writes — visible as `pip install`-installed package directories appearing as 0-byte file inodes in the saved rootfs.
+
 Lookup order: project rootfs -> global build rootfs -> rootfs cache -> OCI unpack
 
 ## Project Reconciliation
@@ -180,12 +182,16 @@ Lookup order: project rootfs -> global build rootfs -> rootfs cache -> OCI unpac
 
 Previously bundled into `silo status`; now split into three focused commands:
 
-- `silo doctor` — runtime readiness (kernel, initfs, bootstrap state)
+- `silo doctor` — runtime readiness (kernel, initfs, bootstrap state). Also flags shims that are shadowed on the live `$PATH` — i.e. `~/.silo/bin/pip` exists but `which pip` resolves elsewhere because homebrew/conda/asdf shellenv was sourced after silo's. Fix is to move `eval "$(silo shellenv)"` last in your shell rc.
 - `silo current` — installed tools plus any active project overrides
 - `silo current <tool>` — effective tool definition after `silo.toml` overrides
 - `silo cache report` — disk usage by bucket (rootfs cache, per-tool caches, images, builds)
 
 `silo status` remains as a deprecated alias that prints `doctor` + `current` output.
+
+## Python venv auto-activation
+
+`silo run python …` injects `VIRTUAL_ENV` and prepends `bin/` to `PATH` when the project root contains `./venv/bin/python` or `./.venv/bin/python` — equivalent to `source venv/bin/activate`. Without this, `silo run python venv/bin/pip install …` would invoke the rootfs python (since `python venv/bin/pip` is just "run this script with the system interpreter"), and pip would install into the ephemeral `/usr/local/lib/python*/site-packages` instead of the host venv. Scoped to the python tool only — a stray `venv/` in a node project doesn't touch other tools' env.
 
 ## LSP Support
 

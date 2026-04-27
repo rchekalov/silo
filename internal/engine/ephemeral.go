@@ -182,6 +182,7 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 	}
 
 	env := buildEnv(opts.Tool, opts.ToolName, opts.ProjectConfig)
+	env = applyVenvAutoActivate(env, opts.ToolName, opts.ProjectDir, opts.Tool.Workdir)
 	if proxy != nil {
 		proxyURL := fmt.Sprintf("http://host.silo.internal:%d", proxy.Port())
 		env = appendEnv(env, "HTTP_PROXY", proxyURL)
@@ -295,6 +296,12 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 
 	exit, waitErr := ctr.Wait()
 	cancelSignals()
+
+	// Flush the guest page cache to the host virtio-fs share before teardown.
+	// Without this, writes the user's command made to /workspace may not have
+	// completed writeback before mgr.Delete() unmounts the share — visible as
+	// `pip install` "succeeding" but leaving no files on the host venv.
+	flushGuestSync(ctr)
 
 	_ = ctr.Stop()
 	mgr.Delete(id)
@@ -446,6 +453,11 @@ func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 
 	exit, waitErr := ctr.Wait()
 	cancelSignals()
+
+	// Belt-and-braces: even with the `&& sync` wrap silo build prepends, exec
+	// a final `sync` while the container is still alive so the ext4 block
+	// device is fully flushed before copyFile snapshots it.
+	flushGuestSync(ctr)
 
 	// Persist rootfs on success BEFORE stopping the container — once the VM
 	// exits, the rootfs file is still present until Delete is called.
@@ -749,6 +761,46 @@ func buildEnv(tool config.ToolDefinition, toolName string, pc *config.ProjectCon
 	return out
 }
 
+// applyVenvAutoActivate mirrors `source venv/bin/activate` when the project
+// root has a Python venv. Without this, `silo run python venv/bin/pip install …`
+// invokes the rootfs python (sys.executable=/usr/local/bin/python), which
+// resolves pip from the rootfs site-packages and installs into /usr/local —
+// thrown away when the ephemeral container exits. By injecting VIRTUAL_ENV +
+// prepending the venv's bin dir to PATH the host venv "just works" for pip /
+// python / pytest the way it would inside a normal activated shell.
+//
+// Scoped to the python tool so a stray venv/ in a node project doesn't
+// surprise other tools' env. `.venv` and `venv` are the conventions; first
+// match wins.
+func applyVenvAutoActivate(env []string, toolName, projectDir, workdir string) []string {
+	if toolName != "python" || projectDir == "" || workdir == "" {
+		return env
+	}
+	for _, candidate := range []string{".venv", "venv"} {
+		// Lstat, not Stat: venv/bin/python is a symlink whose target lives in
+		// the guest rootfs (e.g. /usr/local/bin/python) and won't resolve on
+		// the host. We just need the symlink to exist.
+		if _, err := os.Lstat(filepath.Join(projectDir, candidate, "bin", "python")); err != nil {
+			continue
+		}
+		guestVenv := workdir + "/" + candidate
+		env = appendEnv(env, "VIRTUAL_ENV", guestVenv)
+		existingPath := ""
+		for _, e := range env {
+			if strings.HasPrefix(e, "PATH=") {
+				existingPath = strings.TrimPrefix(e, "PATH=")
+				break
+			}
+		}
+		if existingPath == "" {
+			existingPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		}
+		env = appendEnv(env, "PATH", guestVenv+"/bin:"+existingPath)
+		return env
+	}
+	return env
+}
+
 // mergeCacheMounts appends cache mounts for all `requires` dependencies.
 func mergeCacheMounts(tool config.ToolDefinition) []config.CacheMount {
 	caches := append([]config.CacheMount(nil), tool.Cache...)
@@ -892,6 +944,28 @@ func appendEnv(env []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+// flushGuestSync execs `/bin/sync` inside the running container and waits for
+// it to exit. Used post-Wait, pre-Stop to flush the guest page cache to both
+// the rootfs ext4 block device and any virtio-fs host shares. Best-effort —
+// errors are swallowed because the user's command has already exited and the
+// caller will tear the container down regardless.
+func flushGuestSync(ctr *bridge.Container) {
+	proc, err := ctr.Exec("silo-sync-"+shortID(), bridge.ExecConfig{
+		Arguments: []string{"/bin/sync"},
+		StdinFD:   -1,
+		StdoutFD:  -1,
+		StderrFD:  -1,
+	})
+	if err != nil {
+		return
+	}
+	defer proc.Close()
+	if err := proc.Start(); err != nil {
+		return
+	}
+	_, _ = proc.Wait()
 }
 
 // copyFile copies src to dst. Uses io.Copy — callers that need APFS clonefile

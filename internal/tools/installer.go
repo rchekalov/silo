@@ -5,6 +5,7 @@ package tools
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -136,6 +137,7 @@ func (in *Installer) Install(opts InstallOptions) (config.ToolDefinition, error)
 	if err := in.Shims.CreateShims(def, opts.Name); err != nil {
 		return def, err
 	}
+	WarnIfShimsShadowed(def, os.Stderr)
 	// `silo install` is the explicit "silo owns this command everywhere" gesture,
 	// so the entry is globally pinned. `silo sync` writes through a different
 	// path (commands/pull.go) that leaves the flag false — those tools fall
@@ -341,4 +343,38 @@ func warnIfShimBinNotOnPATH() {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "Hint: add %s to your PATH to use shims directly.\n", shimBin)
+}
+
+// WarnIfShimsShadowed checks each shim in def against the live $PATH and
+// warns if some other directory's binary outranks ~/.silo/bin/<shim>. Catches
+// the common case where ~/.zshrc evals brew/conda/asdf shellenv *after* silo,
+// which silently re-prepends and shadows our shims (e.g. `pip` resolves to
+// /opt/homebrew/bin/pip even though ~/.silo/bin/pip exists).
+//
+// Best-effort: exec.LookPath reads the inherited $PATH, which matches what
+// silo saw when it was invoked. A fully accurate check would spawn a login
+// shell, which isn't worth it for a hint. Exported so `silo doctor` can reuse.
+func WarnIfShimsShadowed(def config.ToolDefinition, w *os.File) {
+	shimBin := runtime.ShimBin()
+	for _, s := range def.Shims {
+		ours := filepath.Join(shimBin, s.HostCommand)
+		resolved, err := exec.LookPath(s.HostCommand)
+		if err != nil || resolved == ours {
+			continue
+		}
+		// Resolve symlinks on both sides — homebrew's pip is often a symlink
+		// chain into a versioned cellar path; comparing the realpath avoids
+		// false negatives if the user symlinked silo's shim into another bin.
+		resolvedReal, _ := filepath.EvalSymlinks(resolved)
+		oursReal, _ := filepath.EvalSymlinks(ours)
+		if resolvedReal != "" && resolvedReal == oursReal {
+			continue
+		}
+		fmt.Fprintf(w,
+			"Hint: %s exists but `which %s` resolves to %s.\n"+
+				"      Your shell prepends another bin dir after silo's. Run\n"+
+				"      `eval \"$(silo shellenv)\"` AFTER your homebrew/conda/asdf\n"+
+				"      init in ~/.zshrc / ~/.bashrc so silo wins.\n",
+			ours, s.HostCommand, resolved)
+	}
 }
