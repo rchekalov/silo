@@ -245,11 +245,11 @@ type BakeOptions struct {
 }
 
 // BakeTool runs opts.Steps in a writable VM and snapshots the resulting
-// rootfs into opts.Target on exit 0. The tool's network is broadened for the
-// build (proxy allowlist dropped, HostAccess kept) so apt-get / npm install
-// reach their upstreams regardless of runtime restrictions. The caller's
-// original def is not mutated — the returned ToolDefinition has
-// BuildRootfs / BuildScript / BuildScope / BuildProjectRoot populated.
+// rootfs into opts.Target on exit 0. Networking is on for the build, with the
+// proxy allowlist broadened by `installAllow` (apt repos, etc.) — see
+// setupProxyRule in engine/ephemeral.go. The caller's original def is not
+// mutated — the returned ToolDefinition has BuildRootfs / BuildScript /
+// BuildScope / BuildProjectRoot populated.
 //
 // run must be non-nil. If opts.Steps is empty the function is a no-op and
 // returns opts.Def unchanged.
@@ -274,13 +274,17 @@ func BakeTool(run BakeFunc, opts BakeOptions) (config.ToolDefinition, error) {
 		return opts.Def, fmt.Errorf("bake: prepare build dir: %w", err)
 	}
 
+	// Force networking on for the build stage even when the tool's runtime
+	// config doesn't ask for host access. setupProxyRule (in the engine) will
+	// union proxy.Allow ∪ proxy.InstallAllow so registry-declared apt/npm/pip
+	// upstreams are reachable during postInstall and dropped at runtime.
 	buildDef := opts.Def
-	if buildDef.Network != nil {
-		n := *buildDef.Network
-		n.Proxy = nil
-		buildDef.Network = &n
-	} else {
+	if buildDef.Network == nil {
 		buildDef.Network = &config.NetworkConfig{HostAccess: true}
+	} else if !buildDef.Network.HostAccess {
+		n := *buildDef.Network
+		n.HostAccess = true
+		buildDef.Network = &n
 	}
 
 	// The RunSetup hook interprets its final argument as "don't seed from the
