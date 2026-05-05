@@ -82,6 +82,11 @@ silo build node --remove                # delete the stored rootfs
                                         # `silo setup` / `silo rebuild` remain as deprecated aliases
                                         # legacy `silo build node -- npm i -g typescript` still works
 
+# Alternative Python package managers (poetry, uv): not first-class tools, bake into python
+silo build python pip install poetry    # then: silo run python -m poetry install (set virtualenvs.in-project)
+silo build python pip install uv        # then: silo run python -m uv venv && silo run python -m uv pip install …
+                                        # ~/.silo/cache/python/{pip,uv,poetry} are mounted; subsequent installs are warm
+
 # Project-scoped package additions (for claude-code and other tools)
 silo add kotlin                         # JDK 17 + Kotlin into claude-code (project-scoped bake)
 silo add ripgrep jq                     # arbitrary apt packages
@@ -419,6 +424,14 @@ PYTHONDONTWRITEBYTECODE = "1"
 [[tools.python.cache]]
 guest = "/root/.cache/pip"
 host = "~/.silo/cache/python/pip"
+
+[[tools.python.cache]]
+guest = "/root/.cache/uv"
+host = "~/.silo/cache/python/uv"
+
+[[tools.python.cache]]
+guest = "/root/.cache/pypoetry"
+host = "~/.silo/cache/python/poetry"
 ```
 
 ### Project (silo.toml)

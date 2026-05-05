@@ -135,6 +135,24 @@ First run unpacks OCI layers (~25s). Subsequent runs clone cached rootfs via APF
 
 Tool caches (pip, npm, cargo, go mod, deno) are mounted from host, persisted across runs at `~/.silo/cache/`.
 
+For Python specifically, `~/.silo/cache/python/{pip,uv,poetry}` are all mounted by default. Users who bake `poetry` or `uv` into the python rootfs (`silo build python pip install poetry` or `… uv`) get the same warm-cache behavior pip already enjoys, without further configuration.
+
+### Alternative Python Package Managers
+
+`poetry` and `uv` are not first-class registry tools (no dedicated shims). The recommended pattern is to bake them into the `python` rootfs and invoke via `python -m`:
+
+```bash
+silo build python pip install poetry
+silo run python -m poetry config virtualenvs.in-project true --local
+silo run python -m poetry install        # auto-activated via ./.venv
+
+silo build python pip install uv
+silo run python -m uv venv
+silo run python -m uv pip install <pkg>  # auto-activated via ./.venv
+```
+
+`virtualenvs.in-project = true` puts poetry's venv at `./.venv`, which silo's auto-activation logic already understands. uv's `uv venv` creates `./.venv` by default. Set `UV_PYTHON_DOWNLOADS=never` (via `[overrides.python.env]`) so uv reuses the rootfs interpreter instead of trying to download a managed CPython.
+
 ## Network
 
 - Default: no network access (full isolation)

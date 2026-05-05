@@ -20,6 +20,10 @@ tools:
     cache:
       - guest: /root/.cache/pip
         host: ~/.silo/cache/python/pip
+      - guest: /root/.cache/uv
+        host: ~/.silo/cache/python/uv
+      - guest: /root/.cache/pypoetry
+        host: ~/.silo/cache/python/poetry
     workdir: /workspace
     env:
       PYTHONDONTWRITEBYTECODE: "1"

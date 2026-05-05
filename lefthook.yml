@@ -34,6 +34,8 @@ pre-push:
         fi
         SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/demo-node-quickstart.sh
         SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/demo-python-quickstart.sh
+        SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/venv-auto-activate.sh
+        SILO_BIN="$(pwd)/bin/silo" bash tests/integration/execution/uv-workflow.sh
       skip:
         - merge
         - rebase
