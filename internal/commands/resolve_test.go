@@ -93,3 +93,56 @@ func TestResolveToolOrShim_NotFound(t *testing.T) {
 		t.Fatalf("want ErrToolNotInstalled, got %v", err)
 	}
 }
+
+// Stored python config from a pre-uv-mount install: only the pip cache mount.
+// resolveToolOrShim should overlay the registry's uv + poetry mounts on top so
+// users on older configs pick up new caching without `silo install --force`.
+func TestResolveToolOrShim_OverlayCacheMountsFromRegistry(t *testing.T) {
+	cfg := newCfg(map[string]config.ToolDefinition{
+		"python": {
+			Image: "docker.io/library/python:3.14-slim",
+			Cache: []config.CacheMount{
+				{Guest: "/root/.cache/pip", Host: "~/.silo/cache/python/pip"},
+			},
+		},
+	})
+
+	_, def, _, err := resolveToolOrShim(cfg, "python")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	guestPaths := map[string]bool{}
+	for _, m := range def.Cache {
+		guestPaths[m.Guest] = true
+	}
+	for _, want := range []string{"/root/.cache/pip", "/root/.cache/uv", "/root/.cache/pypoetry"} {
+		if !guestPaths[want] {
+			t.Errorf("expected cache mount for %s after overlay; got mounts: %+v", want, def.Cache)
+		}
+	}
+}
+
+// A user who deliberately removed and replaced a registry cache mount with a
+// custom host path should NOT have the registry version layered back on top.
+// Dedup key is the guest path; stored entries win on conflict.
+func TestResolveToolOrShim_OverlayPreservesCustomCacheHost(t *testing.T) {
+	cfg := newCfg(map[string]config.ToolDefinition{
+		"python": {
+			Image: "docker.io/library/python:3.14-slim",
+			Cache: []config.CacheMount{
+				{Guest: "/root/.cache/pip", Host: "/custom/pip-cache"},
+			},
+		},
+	})
+
+	_, def, _, err := resolveToolOrShim(cfg, "python")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	for _, m := range def.Cache {
+		if m.Guest == "/root/.cache/pip" && m.Host != "/custom/pip-cache" {
+			t.Errorf("custom pip host clobbered by registry overlay: got %q", m.Host)
+		}
+	}
+}

@@ -189,9 +189,9 @@ func TestTransformArgsShimWrap(t *testing.T) {
 			"node": {
 				Image: "docker.io/library/node:20-slim",
 				Shims: []config.ShimMapping{
-				{HostCommand: "node", ContainerCommand: "node"},
-				{HostCommand: "npm", ContainerCommand: "npm"},
-			},
+					{HostCommand: "node", ContainerCommand: "node"},
+					{HostCommand: "npm", ContainerCommand: "npm"},
+				},
 			},
 		},
 	}

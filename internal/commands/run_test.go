@@ -38,13 +38,13 @@ func newTestCfg() *config.GlobalConfig {
 
 func TestApplySiblingShim(t *testing.T) {
 	tests := []struct {
-		name           string
-		tool           string
-		command        string
-		passthrough    []string
-		wantCommand    string
-		wantPass       []string
-		wantStderrSub  string // substring expected in stderr; "" means stderr must be empty
+		name          string
+		tool          string
+		command       string
+		passthrough   []string
+		wantCommand   string
+		wantPass      []string
+		wantStderrSub string // substring expected in stderr; "" means stderr must be empty
 	}{
 		{
 			name:        "same-tool shim is promoted",
