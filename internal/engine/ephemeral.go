@@ -161,9 +161,11 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 	applyResourceOverrides(&opts.Tool, opts.ToolName, opts.ProjectConfig)
 	effectiveNet, effectivePorts, imageRef := resolveOverrides(opts.Tool, opts.ToolName, opts.ProjectConfig)
 	hasPorts := len(effectivePorts) > 0
-	hasProxy := effectiveNet != nil && effectiveNet.Proxy != nil && len(effectiveNet.Proxy.Allow) > 0
-	// Proxy enforcement requires networking so the container can reach it via host.silo.internal.
-	needsNet := (effectiveNet != nil && effectiveNet.HostAccess) || hasPorts || hasProxy
+	// Networking turns on for tools that opted into hostAccess in registry/overrides
+	// or that publish ports. Whenever networking is on, the proxy is started
+	// unconditionally — empty allowlist means deny-everything (default-deny
+	// contract). To intentionally allow open internet, set allow:["*"].
+	needsNet := (effectiveNet != nil && effectiveNet.HostAccess) || hasPorts
 
 	mgr, err := r.newManager(needsNet)
 	if err != nil {
@@ -171,10 +173,10 @@ func (r *ephemeralRunner) Run(opts RunEphemeralOptions) (int32, error) {
 	}
 	defer mgr.Close()
 
-	// Start the HTTP/HTTPS forward proxy if an allowlist is configured.
 	var proxy *network.HTTPProxy
-	if hasProxy {
-		proxy, err = network.StartHTTPProxy(*effectiveNet.Proxy)
+	if needsNet {
+		rule := runtimeProxyRule(effectiveNet)
+		proxy, err = network.StartHTTPProxy(rule)
 		if err != nil {
 			return -1, errs.Containerf("start network proxy: %v", err)
 		}
@@ -348,15 +350,18 @@ func (r *ephemeralRunner) RunSetup(opts RunSetupOptions) (int32, error) {
 	effectiveNet, effectivePorts, imageRef := resolveOverrides(opts.Tool, opts.ToolName, opts.ProjectConfig)
 	hasPorts := len(effectivePorts) > 0
 
-	// Setup runs apt-get etc., so proxy must be honoured if configured.
+	// Setup runs apt-get / npm install -g / pip install. Networking is always
+	// on for the build stage, but every byte still flows through the proxy
+	// allowlist — the union of runtime allow + installAllow (apt repos and
+	// other one-shot bake-time origins). Empty rule means deny-everything;
+	// the build will fail loudly rather than silently reach the open internet.
 	var proxy *network.HTTPProxy
-	if effectiveNet != nil && effectiveNet.Proxy != nil && len(effectiveNet.Proxy.Allow) > 0 {
-		proxy, err = network.StartHTTPProxy(*effectiveNet.Proxy)
-		if err != nil {
-			return -1, errs.Containerf("start network proxy: %v", err)
-		}
-		defer proxy.Stop()
+	rule := setupProxyRule(effectiveNet)
+	proxy, err = network.StartHTTPProxy(rule)
+	if err != nil {
+		return -1, errs.Containerf("start network proxy: %v", err)
 	}
+	defer proxy.Stop()
 
 	env := buildEnv(opts.Tool, opts.ToolName, opts.ProjectConfig)
 	if proxy != nil {
@@ -714,7 +719,12 @@ func resolveOverrides(tool config.ToolDefinition, name string, pc *config.Projec
 		return effectiveNet, effectivePorts, imageRef
 	}
 	if o.Network != nil {
-		effectiveNet = o.Network
+		// Per-field merge so a project that adds `corp.repo` to the allowlist
+		// keeps the registry's package-manager origins (pypi, npm, etc.).
+		// Without this the wholesale replace silently strips the registry
+		// allowlist and breaks `pip install` / `npm install` for any project
+		// that customized network at all.
+		effectiveNet = mergeNetwork(effectiveNet, o.Network)
 	}
 	if o.Ports != nil {
 		effectivePorts = o.Ports
@@ -723,6 +733,50 @@ func resolveOverrides(tool config.ToolDefinition, name string, pc *config.Projec
 		imageRef = o.Image
 	}
 	return effectiveNet, effectivePorts, imageRef
+}
+
+// mergeNetwork is a thin wrapper around the package-private merge in config
+// so the engine doesn't need to reach into config internals. Identical
+// semantics to ApplyOverride's network merge.
+func mergeNetwork(base, overlay *config.NetworkConfig) *config.NetworkConfig {
+	// Reuse ApplyOverride's per-field merge. Build a minimal ToolOverride
+	// holding only Network so unrelated fields don't perturb the result.
+	merged := config.ApplyOverride(
+		config.ToolDefinition{Network: base},
+		config.ToolOverride{Network: overlay},
+	)
+	return merged.Network
+}
+
+// runtimeProxyRule is the proxy rule applied during `silo run`. It's the
+// runtime allowlist — installAllow is intentionally excluded so apt repos
+// and other bake-time origins aren't reachable at runtime.
+func runtimeProxyRule(net *config.NetworkConfig) config.ProxyConfig {
+	if net == nil || net.Proxy == nil {
+		return config.ProxyConfig{}
+	}
+	return config.ProxyConfig{
+		Allow: append([]string(nil), net.Proxy.Allow...),
+		Deny:  append([]string(nil), net.Proxy.Deny...),
+	}
+}
+
+// setupProxyRule is the proxy rule applied during `silo build` / `silo install`
+// postInstall / `silo add`. Allow is the union of runtime allow + installAllow
+// so apt repos and other one-shot bake-time origins are reachable for the
+// duration of the build stage. installAllow is dropped from the runtime path
+// (see runtimeProxyRule).
+func setupProxyRule(net *config.NetworkConfig) config.ProxyConfig {
+	if net == nil || net.Proxy == nil {
+		return config.ProxyConfig{}
+	}
+	allow := make([]string, 0, len(net.Proxy.Allow)+len(net.Proxy.InstallAllow))
+	allow = append(allow, net.Proxy.Allow...)
+	allow = append(allow, net.Proxy.InstallAllow...)
+	return config.ProxyConfig{
+		Allow: allow,
+		Deny:  append([]string(nil), net.Proxy.Deny...),
+	}
 }
 
 func buildEnv(tool config.ToolDefinition, toolName string, pc *config.ProjectConfig) []string {

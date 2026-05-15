@@ -27,7 +27,7 @@ Built on [Apple Containerization](https://github.com/apple/containerization) (li
 
 The main binary is Go. A Swift dynamic library (`libSiloBridge.dylib`) bridges Go to Apple's Containerization framework via cgo + C FFI.
 
-Current version: **0.4.0**
+Current version: **0.6.0**
 
 ## Quick Reference
 
@@ -483,7 +483,7 @@ Override-able fields under `overrides.<tool>`: `image`, `env`, `network`, `ports
 - **Bools** (`passSshAgent`): logical OR — any of (registry, project-level, per-tool override) being true turns it on. Cannot force-off in an override; if you want forwarding everywhere except one tool, leave the project-level off and opt in per-tool.
 - **Cache mounts**: deduplicated by guest path (overlay host wins).
 - **Ports**: overlay replaces the list wholesale if set.
-- **Network**: overlay replaces the struct wholesale if set.
+- **Network**: per-field merge. `hostAccess` is logical OR across registry / project / per-tool override. `proxy.allow`, `proxy.deny`, `proxy.installAllow` are list-unions, deduped, base-first — so adding a corporate mirror in `silo.toml` extends (not replaces) the registry's package-manager allowlist. To opt out of a registry-allowed host, add it to `proxy.deny`. To intentionally allow open internet for one tool, set `proxy.allow = ["*"]`.
 - **LSP**: nested merge — non-empty overlay `command` / `install` win; `env` map merges per-key; `cache` dedups by guest path.
 
 Not overridable in `.siloconf` (registry / engine concerns): `shims`, `requires`, `buildRootfs`, `buildScript`, `buildScope`, `buildProjectRoot`. Shims are host-side CLI factories registered globally; `requires` is a registry dependency declaration; the `build*` family is engine-managed persistent rootfs state.
@@ -572,12 +572,12 @@ config exists, or merged under it. Legacy `~/.silo/siloconf` (YAML) is still rea
 | `cpus` | int | 2 | VM CPU count |
 | `memory_mb` | uint64 | 2048 | VM memory |
 | `rootfs_size_mb` | uint64 | 2048 | Root filesystem size |
-| `network` | *NetworkConfig | nil | Host access, proxy allowlist |
+| `network` | *NetworkConfig | nil | Host access + HTTP/HTTPS forward proxy. **Deny-by-default**: when `hostAccess: true` is set (or ports are forwarded), networking is on, but every byte goes through the proxy. An empty `proxy.allow` means *no host is reachable* — to opt into open internet, set `proxy.allow: ["*"]` explicitly. `proxy.installAllow` is unioned on top during `silo build` / `silo install` postInstall / `silo add` only (apt repos, etc. — not reachable at runtime). User overrides in `silo.toml` are merged per-list with the registry allowlist (your `corp.repo` entry adds to the registry's pypi/npm — it does not replace it). |
 | `requires` | []string | nil | Tool dependencies |
 | `ports` | []PortMapping | nil | Port forwarding |
 | `build_rootfs` | string | "" | Path to built rootfs |
 | `build_script` | string | "" | Setup script reference |
-| `postInstall` | []string | nil | Registry-level shell commands baked into a persistent `build_rootfs` during `silo install` (e.g. `apt-get install git && npm i -g @anthropic-ai/claude-code`). Executed with `HostAccess` + proxy allowlist dropped so upstream package managers work; runtime keeps the original allowlist. |
+| `postInstall` | []string | nil | Registry-level shell commands baked into a persistent `build_rootfs` during `silo install` (e.g. `apt-get install git && npm i -g @anthropic-ai/claude-code`). Networking is on for the build stage; egress is filtered through the proxy with the union of `proxy.allow` ∪ `proxy.installAllow`. The `installAllow` set (apt repos, e.g. `deb.debian.org`) is dropped at runtime so apt origins aren't reachable from a normal `silo run`. |
 | `lsp` | *LspConfig | nil | LSP server config |
 
 ## Key Patterns & Conventions
@@ -592,6 +592,7 @@ config exists, or merged under it. Legacy `~/.silo/siloconf` (YAML) is still rea
 - **Tests:** `*_test.go` next to the file under test. Integration tests live in `tests/integration/*.sh` and are implementation-agnostic (`$SILO_BIN` driven).
 - **Linting & formatting:** `.golangci.yml` (v2) is the single source of truth — defaults (errcheck/govet/staticcheck/ineffassign/unused) plus revive, gocritic, misspell, unconvert, prealloc, copyloopvar, errorlint, bodyclose, nilerr, thelper. Formatters are gofumpt + gci + goimports. `internal/bridge/` is excluded from several linters because cgo boilerplate trips false positives. Run `make lint-fix && make fmt` before opening a PR. CI runs the lint job advisory-only (`continue-on-error: true`) — flip it to blocking once the baseline is clean.
 - **Pre-commit hook (optional):** `lefthook.yml` runs `golangci-lint --fix --fast-only` on staged `*.go`. Opt in with `brew install lefthook && lefthook install`. Skipped during merge/rebase.
+- **Pre-push hook (optional but strongly recommended):** `lefthook.yml`'s `pre-push` block runs the two silo-web demo regression tests (`tests/integration/execution/demo-{node,python}-quickstart.sh`) before every push. They are the basic-functionality guards: `silo build` + `silo run` install + load `chalk` (node) and `requests` (python). CI cannot run these — GitHub-hosted macos runners don't expose `Virtualization.framework`, so the demos only run via `make test-vm` (manual) or this hook (automatic on push). Cost ~3–5 min on a warm cache. Override with `git push --no-verify` only if you've already run them locally.
 
 ## Troubleshooting
 
@@ -624,6 +625,28 @@ prepends the venv's `bin/` to `PATH` — equivalent to `source venv/bin/activate
 Without this, `silo run python venv/bin/pip install …` would invoke the
 rootfs python and silently install into `/usr/local/lib` (ephemeral, lost on
 container teardown). Scoped to the python tool only.
+
+### `pip install …` / `npm install …` / `curl …` returns 403 or hangs
+The HTTP/HTTPS forward proxy is denying the host. Silo is **deny-by-default**:
+the registry ships allowlists for the package managers (pypi, npm, crates,
+goproxy, deno.land), but anything outside that set is blocked. Watch for
+`[silo] proxy: denied <host>` lines on stderr — that is the rejection.
+
+To unblock a specific host for one project:
+
+```bash
+silo config network allow python files.example.com
+# or hand-edit silo.toml:
+# [overrides.python.network.proxy]
+# allow = ["files.example.com"]
+```
+
+User entries are *unioned* with the registry allowlist — adding a corporate
+mirror does not strip pypi/npm. To intentionally allow open internet for one
+tool: set `[overrides.<tool>.network.proxy] allow = ["*"]`.
+
+`silo install` postInstall has a separate `installAllow` set (apt repos,
+etc.) that is reachable during the build stage but dropped at runtime.
 
 ### Full reset
 ```bash

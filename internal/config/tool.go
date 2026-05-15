@@ -17,11 +17,23 @@ const (
 	DefaultRootfsSizeMB = 2048
 )
 
-// ProxyConfig is a domain allow/deny list for the network proxy. `allow`
-// supports leading wildcards ("*.github.com").
+// ProxyConfig is a domain allow/deny list for the network proxy.
+//
+// Allow supports leading wildcards ("*.github.com"), and a single literal
+// "*" entry as the explicit "permit any host" opt-in. An empty Allow
+// denies everything (deny-by-default); the proxy is the only network
+// egress path when Network.HostAccess is on, so an empty allowlist
+// means the guest cannot reach external HTTP/HTTPS hosts.
+//
+// InstallAllow is unioned on top of Allow during postInstall / build
+// stages (silo build, silo install, silo add) so that apt repos and
+// other package-manager origins needed to bake the rootfs aren't leaked
+// into runtime egress. Use it for one-shot dependencies of the bake
+// step that the tool should NOT be able to reach at runtime.
 type ProxyConfig struct {
-	Allow []string `yaml:"allow"           toml:"allow"`
-	Deny  []string `yaml:"deny,omitempty"  toml:"deny,omitempty"`
+	Allow        []string `yaml:"allow"                  toml:"allow"`
+	Deny         []string `yaml:"deny,omitempty"         toml:"deny,omitempty"`
+	InstallAllow []string `yaml:"installAllow,omitempty" toml:"installAllow,omitempty"`
 }
 
 // NetworkConfig gates host access for a tool. Camel-case in both YAML and TOML.
@@ -200,14 +212,7 @@ func ApplyOverride(def ToolDefinition, o ToolOverride) ToolDefinition {
 		out.Env = merged
 	}
 	if o.Network != nil {
-		n := *o.Network
-		if o.Network.Proxy != nil {
-			p := *o.Network.Proxy
-			p.Allow = append([]string(nil), o.Network.Proxy.Allow...)
-			p.Deny = append([]string(nil), o.Network.Proxy.Deny...)
-			n.Proxy = &p
-		}
-		out.Network = &n
+		out.Network = mergeNetworkConfig(def.Network, o.Network)
 	}
 	if o.Ports != nil {
 		out.Ports = append([]PortMapping(nil), o.Ports...)

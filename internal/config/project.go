@@ -669,6 +669,52 @@ func mergeLspConfig(base, overlay *LspConfig) *LspConfig {
 	return &out
 }
 
+// mergeNetworkConfig merges two NetworkConfig structs per-field. Returns nil
+// only when both inputs are nil.
+//
+// HostAccess: logical OR (any of the layers turning it on wins). The override
+// has no way to force-off; if a project wants strictly no network for a tool
+// that the registry granted host access to, it can leave Network=nil and rely
+// on the runtime path that requires HostAccess to enable networking — but
+// that contradicts the registry author's intent and is intentionally hard to
+// express.
+//
+// Proxy: per-list union for Allow/Deny/InstallAllow, deduped, base-first.
+// This means `silo config network allow node 'corp.repo'` ADDS to whatever
+// the registry already permits, rather than replacing it. Without this
+// merge, adding a single corporate domain would silently strip the
+// registry's npm allowlist and break npm install.
+func mergeNetworkConfig(base, overlay *NetworkConfig) *NetworkConfig {
+	if base == nil && overlay == nil {
+		return nil
+	}
+	out := NetworkConfig{}
+	if base != nil {
+		out.HostAccess = base.HostAccess
+		if base.Proxy != nil {
+			p := *base.Proxy
+			p.Allow = append([]string(nil), base.Proxy.Allow...)
+			p.Deny = append([]string(nil), base.Proxy.Deny...)
+			p.InstallAllow = append([]string(nil), base.Proxy.InstallAllow...)
+			out.Proxy = &p
+		}
+	}
+	if overlay != nil {
+		if overlay.HostAccess {
+			out.HostAccess = true
+		}
+		if overlay.Proxy != nil {
+			if out.Proxy == nil {
+				out.Proxy = &ProxyConfig{}
+			}
+			out.Proxy.Allow = dedupMerge(out.Proxy.Allow, overlay.Proxy.Allow)
+			out.Proxy.Deny = dedupMerge(out.Proxy.Deny, overlay.Proxy.Deny)
+			out.Proxy.InstallAllow = dedupMerge(out.Proxy.InstallAllow, overlay.Proxy.InstallAllow)
+		}
+	}
+	return &out
+}
+
 // mergeCacheMounts returns base+overlay, deduplicated by Guest path.
 // Overlay wins on conflict. Order: base first, then overlay entries that
 // weren't already in base.
